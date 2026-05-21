@@ -27,6 +27,7 @@ class Position(Base):
     cost_basis = Column(Float, nullable=False)  # Total cost basis
     purchase_date = Column(Date, nullable=False)
     asset_type = Column(String, default=AssetType.STOCK.value)
+    currency = Column(String, default="USD")  # USD, GBP, EUR, etc.
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

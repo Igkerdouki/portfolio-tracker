@@ -21,7 +21,7 @@ def calculate_position_metrics(position: Position, current_price: float) -> dict
 
 
 def get_portfolio_summary(db: Session) -> dict:
-    """Calculate portfolio summary with allocation breakdown."""
+    """Calculate portfolio summary with allocation breakdown by currency."""
     positions = db.query(Position).all()
 
     if not positions:
@@ -31,42 +31,71 @@ def get_portfolio_summary(db: Session) -> dict:
             "total_gain_loss": 0,
             "total_gain_loss_percent": 0,
             "positions_count": 0,
-            "allocation": []
+            "allocation": [],
+            "by_currency": {}
         }
 
-    # Fetch all prices
+    # Fetch all prices (may fail due to rate limiting)
     symbols = list(set(p.symbol for p in positions))
     prices = get_prices_batch(symbols)
 
-    total_value = 0
-    total_cost = 0
+    # Track totals by currency
+    currency_data: Dict[str, dict] = defaultdict(lambda: {"value": 0, "cost": 0, "positions": []})
     allocation_data: Dict[str, dict] = defaultdict(lambda: {"value": 0, "symbols": []})
 
     for position in positions:
         price_data = prices.get(position.symbol.upper())
+        currency = getattr(position, 'currency', 'USD') or 'USD'
+
+        # Use actual price if available, otherwise use avg cost from cost_basis
         if price_data:
-            current_value = position.shares * price_data["price"]
-            total_value += current_value
-            total_cost += position.cost_basis
+            current_price = price_data["price"]
+            current_value = position.shares * current_price
+        else:
+            # Fallback: use cost basis as approximate value when prices unavailable
+            avg_cost = position.cost_basis / position.shares if position.shares > 0 else 0
+            current_price = avg_cost
+            current_value = position.cost_basis
 
-            asset_type = position.asset_type
-            allocation_data[asset_type]["value"] += current_value
-            if position.symbol not in allocation_data[asset_type]["symbols"]:
-                allocation_data[asset_type]["symbols"].append(position.symbol)
+        # Add to currency totals
+        currency_data[currency]["value"] += current_value
+        currency_data[currency]["cost"] += position.cost_basis
+        currency_data[currency]["positions"].append(position.symbol)
 
-    total_gain_loss = total_value - total_cost
-    total_gain_loss_percent = (total_gain_loss / total_cost * 100) if total_cost > 0 else 0
+        asset_type = position.asset_type
+        allocation_data[asset_type]["value"] += current_value
+        if position.symbol not in allocation_data[asset_type]["symbols"]:
+            allocation_data[asset_type]["symbols"].append(position.symbol)
 
     # Calculate allocation percentages
     allocation = [
         {
             "asset_type": asset_type,
             "value": round(data["value"], 2),
-            "percentage": round(data["value"] / total_value * 100, 2) if total_value > 0 else 0,
+            "percentage": round(data["value"] / sum(d["value"] for d in allocation_data.values()) * 100, 2) if sum(d["value"] for d in allocation_data.values()) > 0 else 0,
             "symbols": data["symbols"]
         }
         for asset_type, data in allocation_data.items()
     ]
+
+    # Build currency breakdown
+    by_currency = {}
+    for curr, data in currency_data.items():
+        gain_loss = data["value"] - data["cost"]
+        gain_loss_pct = (gain_loss / data["cost"] * 100) if data["cost"] > 0 else 0
+        by_currency[curr] = {
+            "total_value": round(data["value"], 2),
+            "total_cost": round(data["cost"], 2),
+            "gain_loss": round(gain_loss, 2),
+            "gain_loss_percent": round(gain_loss_pct, 2),
+            "positions": list(set(data["positions"]))
+        }
+
+    # Overall totals (note: mixing currencies, shown for reference)
+    total_value = sum(d["value"] for d in currency_data.values())
+    total_cost = sum(d["cost"] for d in currency_data.values())
+    total_gain_loss = total_value - total_cost
+    total_gain_loss_percent = (total_gain_loss / total_cost * 100) if total_cost > 0 else 0
 
     return {
         "total_value": round(total_value, 2),
@@ -74,7 +103,8 @@ def get_portfolio_summary(db: Session) -> dict:
         "total_gain_loss": round(total_gain_loss, 2),
         "total_gain_loss_percent": round(total_gain_loss_percent, 2),
         "positions_count": len(positions),
-        "allocation": allocation
+        "allocation": allocation,
+        "by_currency": by_currency
     }
 
 

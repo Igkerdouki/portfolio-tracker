@@ -63,6 +63,9 @@ def list_positions(db: Session = Depends(get_db)):
     for position in positions:
         price_data = prices.get(position.symbol.upper())
 
+        # Calculate avg cost as fallback price
+        avg_cost = position.cost_basis / position.shares if position.shares > 0 else 0
+
         pos_dict = {
             "id": position.id,
             "symbol": position.symbol,
@@ -70,10 +73,11 @@ def list_positions(db: Session = Depends(get_db)):
             "cost_basis": position.cost_basis,
             "purchase_date": position.purchase_date,
             "asset_type": position.asset_type,
-            "current_price": None,
-            "current_value": None,
-            "gain_loss": None,
-            "gain_loss_percent": None
+            # Use actual price if available, otherwise show avg cost
+            "current_price": round(avg_cost, 2),
+            "current_value": round(position.cost_basis, 2),
+            "gain_loss": 0.0,
+            "gain_loss_percent": 0.0
         }
 
         if price_data:
@@ -356,15 +360,19 @@ def ibkr_sync_positions(db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Not connected to IBKR. Call /ibkr/connect first.")
 
     try:
-        ibkr_positions = ibkr_service.get_portfolio()
+        # Use get_positions() instead of get_portfolio() as it's more reliable
+        ibkr_positions = ibkr_service.get_positions()
 
         synced = 0
         for pos in ibkr_positions:
             if pos["shares"] == 0:
                 continue
 
-            # Check if position already exists
-            existing = db.query(Position).filter(Position.symbol == pos["symbol"]).first()
+            # Check if position already exists (match by symbol AND currency)
+            existing = db.query(Position).filter(
+                Position.symbol == pos["symbol"],
+                Position.currency == pos.get("currency", "USD")
+            ).first()
 
             if existing:
                 # Update existing position
@@ -377,7 +385,8 @@ def ibkr_sync_positions(db: Session = Depends(get_db)):
                     shares=pos["shares"],
                     cost_basis=pos["cost_basis"],
                     purchase_date=date.today(),
-                    asset_type=pos["asset_type"]
+                    asset_type=pos["asset_type"],
+                    currency=pos.get("currency", "USD")
                 )
                 db.add(new_position)
 

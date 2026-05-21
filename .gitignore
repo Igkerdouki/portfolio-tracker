@@ -23,3 +23,12 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Data files (may contain personal info)
+agent_state.json
+collected_data.json
+analysis_history.json
+ANALYSIS_LOG.md
+STOCK_ANALYSIS.md
+LEARNING_LOG.md
+*.db

@@ -55,6 +55,10 @@ class IBKRService:
         """Async connection helper."""
         try:
             await self.ib.connectAsync(host, port, clientId=client_id)
+            if self.ib.isConnected():
+                # Request account updates to populate portfolio data
+                self.ib.reqAccountUpdates(True, '')
+                await asyncio.sleep(2)  # Wait for account data to populate
             return self.ib.isConnected()
         except Exception as e:
             print(f"Async connect error: {e}")
@@ -153,11 +157,19 @@ class IBKRService:
         """Async helper to get account summary."""
         account_values = self.ib.accountValues()
 
-        summary = {}
+        summary = {"by_currency": {}}
+        tags_of_interest = ["NetLiquidation", "TotalCashValue", "GrossPositionValue",
+                           "UnrealizedPnL", "RealizedPnL", "BuyingPower"]
+
         for av in account_values:
-            if av.tag in ["NetLiquidation", "TotalCashValue", "GrossPositionValue",
-                          "UnrealizedPnL", "RealizedPnL", "BuyingPower"]:
-                if av.currency == "USD" or av.currency == "BASE":
+            if av.tag in tags_of_interest:
+                currency = av.currency if av.currency else "BASE"
+                if currency not in summary["by_currency"]:
+                    summary["by_currency"][currency] = {}
+                summary["by_currency"][currency][av.tag] = float(av.value)
+
+                # Also keep USD/BASE at top level for backwards compatibility
+                if currency in ["USD", "BASE"]:
                     summary[av.tag] = float(av.value)
 
         return summary

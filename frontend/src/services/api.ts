@@ -54,4 +54,22 @@ export const api = {
 
   // Prices
   getPrice: (symbol: string) => fetchApi<PriceData>(`/prices/${symbol}`),
+
+  // IBKR
+  connectIBKR: (port = 7497) =>
+    fetchApi<{ status: string }>('/ibkr/connect', {
+      method: 'POST',
+      body: JSON.stringify({ port }),
+    }),
+
+  disconnectIBKR: () =>
+    fetchApi<{ status: string }>('/ibkr/disconnect', { method: 'POST' }),
+
+  getIBKRStatus: () => fetchApi<{ connected: boolean }>('/ibkr/status'),
+
+  getIBKRAccount: () => fetchApi<Record<string, unknown>>('/ibkr/account'),
+
+  getIBKRPositions: () => fetchApi<{ positions: unknown[] }>('/ibkr/positions'),
+
+  syncIBKR: () => fetchApi<{ status: string; positions_synced: number }>('/ibkr/sync', { method: 'POST' }),
 };
