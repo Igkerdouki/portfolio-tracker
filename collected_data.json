@@ -1,0 +1,20 @@
+{
+  "stocks": {},
+  "news": [],
+  "insider_trades": [],
+  "earnings": [],
+  "sentiment_scores": {},
+  "collection_history": [
+    {
+      "timestamp": "2026-05-20T23:57:00.931210",
+      "symbols": 7,
+      "data_points": 0
+    },
+    {
+      "timestamp": "2026-05-20T23:57:27.483319",
+      "symbols": 7,
+      "data_points": 0
+    }
+  ],
+  "last_collection": "2026-05-20T23:57:27.483313"
+}

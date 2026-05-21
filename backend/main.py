@@ -17,6 +17,10 @@ from services.portfolio import (
     get_portfolio_history, save_daily_snapshot
 )
 from services.ibkr import ibkr_service
+from services.stock_analyzer import stock_analyzer
+from services.analysis_agent import analysis_agent
+from services.data_collector import data_collector
+import threading
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -384,4 +388,227 @@ def ibkr_sync_positions(db: Session = Depends(get_db)):
 
     except Exception as e:
         db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Stock Analysis Agent endpoints
+_agent_thread = None
+
+
+@app.get("/analysis/analyze/{symbol}")
+def analyze_stock(symbol: str):
+    """Analyze a single stock using fundamental and technical metrics."""
+    try:
+        analysis = stock_analyzer.analyze_stock(symbol.upper())
+        return analysis
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/analysis/analyze-multiple")
+def analyze_multiple(symbols: List[str]):
+    """Analyze multiple stocks."""
+    results = []
+    for symbol in symbols:
+        try:
+            analysis = stock_analyzer.analyze_stock(symbol.upper())
+            results.append(analysis)
+        except Exception as e:
+            results.append({"symbol": symbol, "error": str(e)})
+    return {"analyses": results}
+
+
+@app.get("/analysis/suggestions")
+def get_suggestions():
+    """Get current analysis suggestions and top picks."""
+    return analysis_agent.get_suggestions()
+
+
+@app.get("/analysis/watchlist")
+def get_watchlist():
+    """Get current watchlist."""
+    return {"watchlist": analysis_agent.state['watchlist']}
+
+
+@app.post("/analysis/watchlist/add")
+def add_to_watchlist(symbols: List[str]):
+    """Add symbols to watchlist."""
+    analysis_agent.add_to_watchlist(symbols)
+    return {"watchlist": analysis_agent.state['watchlist']}
+
+
+@app.post("/analysis/watchlist/remove")
+def remove_from_watchlist(symbols: List[str]):
+    """Remove symbols from watchlist."""
+    analysis_agent.remove_from_watchlist(symbols)
+    return {"watchlist": analysis_agent.state['watchlist']}
+
+
+@app.post("/analysis/run-cycle")
+def run_analysis_cycle():
+    """Run a single analysis cycle on all watchlist stocks."""
+    try:
+        results = analysis_agent.run_analysis_cycle()
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/analysis/start-agent")
+def start_analysis_agent(interval_hours: float = 4):
+    """Start the continuous analysis agent in background."""
+    global _agent_thread
+
+    if analysis_agent.running:
+        return {"status": "already_running"}
+
+    def run_agent():
+        analysis_agent.run_continuous(interval_hours)
+
+    _agent_thread = threading.Thread(target=run_agent, daemon=True)
+    _agent_thread.start()
+
+    return {"status": "started", "interval_hours": interval_hours}
+
+
+@app.post("/analysis/stop-agent")
+def stop_analysis_agent():
+    """Stop the continuous analysis agent."""
+    if not analysis_agent.running:
+        return {"status": "not_running"}
+
+    analysis_agent.stop()
+    return {"status": "stopping"}
+
+
+@app.get("/analysis/agent-status")
+def get_agent_status():
+    """Get analysis agent status."""
+    return {
+        "running": analysis_agent.running,
+        "analysis_count": analysis_agent.state['analysis_count'],
+        "improvement_cycles": analysis_agent.state['improvement_cycles'],
+        "pending_predictions": len(analysis_agent.state['pending_predictions']),
+        "completed_predictions": len(analysis_agent.state['completed_predictions']),
+        "last_analysis": analysis_agent.state['last_analysis'],
+        "started_at": analysis_agent.state.get('started_at'),
+    }
+
+
+@app.get("/analysis/predictions")
+def get_predictions():
+    """Get all predictions (pending and completed)."""
+    return {
+        "pending": analysis_agent.state['pending_predictions'],
+        "completed": analysis_agent.state['completed_predictions'][-20:],  # Last 20
+    }
+
+
+@app.post("/analysis/check-predictions")
+def check_predictions():
+    """Check pending predictions against actual outcomes."""
+    try:
+        results = analysis_agent.check_predictions()
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/analysis/report")
+def get_analysis_report():
+    """Generate and return the analysis report."""
+    try:
+        report = analysis_agent.analyzer.generate_report(analysis_agent.state['watchlist'])
+        return {"report": report}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/analysis/weights")
+def get_model_weights():
+    """Get current model weights used for scoring."""
+    return {
+        "weights": analysis_agent.analyzer.weights,
+        "default_weights": analysis_agent.analyzer.DEFAULT_WEIGHTS,
+    }
+
+
+# Data Collection endpoints
+@app.post("/data/collect")
+def collect_data(symbols: List[str] = None):
+    """Collect data from all sources for given symbols (or watchlist)."""
+    if not symbols:
+        symbols = analysis_agent.state.get('watchlist', [])
+
+    if not symbols:
+        raise HTTPException(status_code=400, detail="No symbols provided")
+
+    try:
+        results = data_collector.collect_all(symbols)
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/data/stock/{symbol}")
+def get_collected_data(symbol: str):
+    """Get collected data for a specific symbol."""
+    data = data_collector.get_stock_data(symbol)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"No data collected for {symbol}")
+    return data
+
+
+@app.get("/data/signals/{symbol}")
+def get_signals(symbol: str):
+    """Get trading signals based on collected data."""
+    signals = data_collector.get_signals(symbol)
+    if 'error' in signals:
+        raise HTTPException(status_code=404, detail=signals['error'])
+    return signals
+
+
+@app.get("/data/stats")
+def get_collection_stats():
+    """Get data collection statistics."""
+    return data_collector.get_collection_stats()
+
+
+@app.post("/data/collect-and-analyze")
+def collect_and_analyze(symbols: List[str] = None):
+    """Collect data and run analysis in one call - the full self-improving cycle."""
+    if not symbols:
+        symbols = analysis_agent.state.get('watchlist', [])
+
+    if not symbols:
+        raise HTTPException(status_code=400, detail="No symbols provided")
+
+    results = {
+        'collection': {},
+        'analysis': {},
+        'signals': {},
+        'top_picks': [],
+    }
+
+    try:
+        # Step 1: Collect all data
+        results['collection'] = data_collector.collect_all(symbols)
+
+        # Step 2: Run analysis cycle
+        results['analysis'] = analysis_agent.run_analysis_cycle()
+
+        # Step 3: Generate signals for each symbol
+        for symbol in symbols:
+            signals = data_collector.get_signals(symbol)
+            if 'error' not in signals:
+                results['signals'][symbol] = signals
+
+        # Step 4: Check past predictions (self-improvement)
+        analysis_agent.check_predictions()
+
+        results['top_picks'] = analysis_agent.state.get('top_picks', [])
+
+        return results
+
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

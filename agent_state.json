@@ -1,0 +1,20 @@
+{
+  "watchlist": [
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "NVDA",
+    "TSLA"
+  ],
+  "last_analysis": "2026-05-21T00:00:55.318707",
+  "analysis_count": 3,
+  "improvement_cycles": 0,
+  "pending_predictions": [],
+  "completed_predictions": [],
+  "top_picks": [],
+  "avoid_list": [],
+  "learning_log": [],
+  "started_at": null
+}
