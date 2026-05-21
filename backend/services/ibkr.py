@@ -1,15 +1,23 @@
-from ib_insync import IB, Stock, Contract
+from ib_insync import IB, Stock, Contract, util
 from typing import Optional, List
-import asyncio
 from datetime import date
+import threading
+import asyncio
 
 
 class IBKRService:
     def __init__(self):
         self.ib: Optional[IB] = None
         self.connected = False
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._thread: Optional[threading.Thread] = None
 
-    async def connect(self, host: str = "127.0.0.1", port: int = 7497, client_id: int = 1) -> bool:
+    def _run_event_loop(self, loop: asyncio.AbstractEventLoop):
+        """Run the event loop in a separate thread."""
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+    def connect_sync(self, host: str = "127.0.0.1", port: int = 7497, client_id: int = 1) -> bool:
         """
         Connect to TWS or IB Gateway.
 
@@ -20,42 +28,85 @@ class IBKRService:
         - IB Gateway Paper: 4002
         """
         try:
+            if self.ib and self.ib.isConnected():
+                return True
+
+            # Create a new event loop for ib_insync in a separate thread
+            self._loop = asyncio.new_event_loop()
+            self._thread = threading.Thread(target=self._run_event_loop, args=(self._loop,), daemon=True)
+            self._thread.start()
+
+            # Create IB instance and connect using the dedicated loop
             self.ib = IB()
-            await self.ib.connectAsync(host, port, clientId=client_id)
-            self.connected = self.ib.isConnected()
+
+            # Run the connection in the dedicated event loop
+            future = asyncio.run_coroutine_threadsafe(
+                self._connect_async(host, port, client_id),
+                self._loop
+            )
+            self.connected = future.result(timeout=10)
             return self.connected
         except Exception as e:
             print(f"Failed to connect to IBKR: {e}")
             self.connected = False
             return False
 
-    def connect_sync(self, host: str = "127.0.0.1", port: int = 7497, client_id: int = 1) -> bool:
-        """Synchronous connection to TWS or IB Gateway."""
+    async def _connect_async(self, host: str, port: int, client_id: int) -> bool:
+        """Async connection helper."""
         try:
-            self.ib = IB()
-            self.ib.connect(host, port, clientId=client_id)
-            self.connected = self.ib.isConnected()
-            return self.connected
+            await self.ib.connectAsync(host, port, clientId=client_id)
+            return self.ib.isConnected()
         except Exception as e:
-            print(f"Failed to connect to IBKR: {e}")
-            self.connected = False
+            print(f"Async connect error: {e}")
             return False
 
     def disconnect(self):
         """Disconnect from IBKR."""
         if self.ib and self.connected:
-            self.ib.disconnect()
+            if self._loop and self._loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(
+                    self._disconnect_async(),
+                    self._loop
+                )
+                try:
+                    future.result(timeout=5)
+                except:
+                    pass
+                # Stop the event loop
+                self._loop.call_soon_threadsafe(self._loop.stop)
             self.connected = False
+
+    async def _disconnect_async(self):
+        """Async disconnect helper."""
+        if self.ib:
+            self.ib.disconnect()
 
     def is_connected(self) -> bool:
         """Check if connected to IBKR."""
-        return self.ib is not None and self.ib.isConnected()
+        if self.ib is None:
+            return False
+        try:
+            return self.ib.isConnected()
+        except:
+            return False
+
+    def _run_in_loop(self, coro, timeout=10):
+        """Run a coroutine in the dedicated event loop."""
+        if not self._loop or not self._loop.is_running():
+            raise ConnectionError("Event loop not running")
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result(timeout=timeout)
 
     def get_positions(self) -> List[dict]:
         """Get all positions from IBKR account."""
         if not self.is_connected():
             raise ConnectionError("Not connected to IBKR")
 
+        positions = self._run_in_loop(self._get_positions_async())
+        return positions
+
+    async def _get_positions_async(self) -> List[dict]:
+        """Async helper to get positions."""
         positions = self.ib.positions()
         result = []
 
@@ -96,7 +147,10 @@ class IBKRService:
         if not self.is_connected():
             raise ConnectionError("Not connected to IBKR")
 
-        # Request account values
+        return self._run_in_loop(self._get_account_summary_async())
+
+    async def _get_account_summary_async(self) -> dict:
+        """Async helper to get account summary."""
         account_values = self.ib.accountValues()
 
         summary = {}
@@ -113,12 +167,16 @@ class IBKRService:
         if not self.is_connected():
             raise ConnectionError("Not connected to IBKR")
 
+        return self._run_in_loop(self._get_market_price_async(symbol, exchange, currency), timeout=15)
+
+    async def _get_market_price_async(self, symbol: str, exchange: str, currency: str) -> Optional[float]:
+        """Async helper to get market price."""
         contract = Stock(symbol, exchange, currency)
         self.ib.qualifyContracts(contract)
 
         # Request market data
         ticker = self.ib.reqMktData(contract)
-        self.ib.sleep(2)  # Wait for data
+        await asyncio.sleep(2)  # Wait for data
 
         price = ticker.marketPrice()
 
@@ -132,6 +190,10 @@ class IBKRService:
         if not self.is_connected():
             raise ConnectionError("Not connected to IBKR")
 
+        return self._run_in_loop(self._get_portfolio_async())
+
+    async def _get_portfolio_async(self) -> List[dict]:
+        """Async helper to get portfolio."""
         portfolio = self.ib.portfolio()
         result = []
 
