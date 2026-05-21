@@ -1,20 +1,22 @@
 """
 Stock Analyzer - Evaluates stocks using fundamental and technical metrics
 Based on metrics used by investment gurus (Buffett, Lynch, Graham)
+Uses Alpha Vantage data via DataCollector
 """
 
-import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, Dict, List
 import json
 import os
+
+from .data_collector import DataCollector
 
 ANALYSIS_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'analysis_history.json')
 REPORT_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'STOCK_ANALYSIS.md')
 
 
 class StockAnalyzer:
-    """Analyzes stocks using fundamental and technical metrics."""
+    """Analyzes stocks using fundamental and technical metrics from Alpha Vantage."""
 
     # Scoring weights - these get adjusted based on prediction accuracy
     DEFAULT_WEIGHTS = {
@@ -28,12 +30,13 @@ class StockAnalyzer:
         "dividend_yield": 0.05,
         "price_vs_52w": 0.08,
         "moving_avg_signal": 0.10,
-        "analyst_rating": 0.05,
+        "sentiment": 0.05,
     }
 
     def __init__(self):
         self.weights = self._load_weights()
         self.history = self._load_history()
+        self.data_collector = DataCollector()
 
     def _load_weights(self) -> Dict[str, float]:
         """Load weights from history or use defaults."""
@@ -63,17 +66,16 @@ class StockAnalyzer:
             json.dump(self.history, f, indent=2, default=str)
 
     def analyze_stock(self, symbol: str) -> Dict:
-        """Perform comprehensive stock analysis."""
+        """Perform comprehensive stock analysis using Alpha Vantage data."""
         try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
-            hist = ticker.history(period="1y")
+            # Collect data from Alpha Vantage
+            stock_data = self.data_collector.collect_stock_data(symbol)
 
-            if hist.empty:
+            if not stock_data.get('fundamentals') and not stock_data.get('technical'):
                 return {"error": f"No data available for {symbol}"}
 
-            # Gather metrics
-            metrics = self._extract_metrics(info, hist)
+            # Extract metrics from Alpha Vantage data
+            metrics = self._extract_metrics(stock_data)
             scores = self._calculate_scores(metrics)
 
             # Calculate overall score (0-100)
@@ -85,17 +87,25 @@ class StockAnalyzer:
             # Generate recommendation
             recommendation = self._generate_recommendation(overall_score, metrics, scores)
 
+            # Get current price
+            current_price = (
+                stock_data.get('technical', {}).get('current_price') or
+                stock_data.get('fundamentals', {}).get('current_price') or
+                0
+            )
+
             # Create analysis result
             analysis = {
                 "symbol": symbol.upper(),
                 "timestamp": datetime.now().isoformat(),
-                "price": info.get("regularMarketPrice") or info.get("currentPrice"),
+                "price": current_price,
                 "metrics": metrics,
                 "scores": scores,
                 "overall_score": round(overall_score, 2),
                 "recommendation": recommendation,
                 "key_strengths": self._identify_strengths(scores),
                 "key_concerns": self._identify_concerns(scores),
+                "news_summary": self._summarize_news(stock_data.get('news', []), stock_data.get('sentiment', {})),
             }
 
             # Store in history
@@ -116,60 +126,75 @@ class StockAnalyzer:
         except Exception as e:
             return {"error": str(e), "symbol": symbol}
 
-    def _extract_metrics(self, info: Dict, hist) -> Dict:
-        """Extract all relevant metrics from stock data."""
-        current_price = info.get("regularMarketPrice") or info.get("currentPrice") or 0
+    def _extract_metrics(self, stock_data: Dict) -> Dict:
+        """Extract all relevant metrics from Alpha Vantage data."""
+        fundamentals = stock_data.get('fundamentals', {})
+        technical = stock_data.get('technical', {})
+        sentiment = stock_data.get('sentiment', {})
 
-        # Calculate 50-day and 200-day moving averages
-        ma_50 = hist['Close'].tail(50).mean() if len(hist) >= 50 else None
-        ma_200 = hist['Close'].tail(200).mean() if len(hist) >= 200 else None
+        current_price = technical.get('current_price') or fundamentals.get('current_price') or 0
 
-        # 52-week high/low
-        week_52_high = info.get("fiftyTwoWeekHigh", 0)
-        week_52_low = info.get("fiftyTwoWeekLow", 0)
+        # 52-week high/low from fundamentals or technical
+        week_52_high = fundamentals.get('52w_high') or technical.get('52w_high') or 0
+        week_52_low = fundamentals.get('52w_low') or technical.get('52w_low') or 0
 
         # Price position in 52-week range (0-100%)
         price_position = 0
         if week_52_high and week_52_low and week_52_high != week_52_low:
             price_position = ((current_price - week_52_low) / (week_52_high - week_52_low)) * 100
 
+        # Moving averages
+        ma_50 = fundamentals.get('50d_ma') or technical.get('sma_50')
+        ma_200 = fundamentals.get('200d_ma')
+
         return {
             "current_price": current_price,
-            "pe_ratio": info.get("trailingPE"),
-            "forward_pe": info.get("forwardPE"),
-            "peg_ratio": info.get("pegRatio"),
-            "price_to_book": info.get("priceToBook"),
-            "price_to_sales": info.get("priceToSalesTrailing12Months"),
-            "debt_to_equity": info.get("debtToEquity"),
-            "current_ratio": info.get("currentRatio"),
-            "quick_ratio": info.get("quickRatio"),
-            "roe": info.get("returnOnEquity"),
-            "roa": info.get("returnOnAssets"),
-            "profit_margin": info.get("profitMargins"),
-            "operating_margin": info.get("operatingMargins"),
-            "revenue_growth": info.get("revenueGrowth"),
-            "earnings_growth": info.get("earningsGrowth"),
-            "eps_trailing": info.get("trailingEps"),
-            "eps_forward": info.get("forwardEps"),
-            "dividend_yield": info.get("dividendYield"),
-            "payout_ratio": info.get("payoutRatio"),
-            "beta": info.get("beta"),
-            "market_cap": info.get("marketCap"),
-            "enterprise_value": info.get("enterpriseValue"),
+            "pe_ratio": fundamentals.get('pe_ratio'),
+            "forward_pe": fundamentals.get('forward_pe'),
+            "peg_ratio": fundamentals.get('peg_ratio'),
+            "price_to_book": fundamentals.get('price_to_book'),
+            "price_to_sales": fundamentals.get('price_to_sales'),
+            "ev_to_revenue": fundamentals.get('ev_to_revenue'),
+            "ev_to_ebitda": fundamentals.get('ev_to_ebitda'),
+            "debt_to_equity": fundamentals.get('debt_to_equity'),
+            "current_ratio": fundamentals.get('current_ratio'),
+            "roe": fundamentals.get('roe'),
+            "roa": fundamentals.get('roa'),
+            "profit_margin": fundamentals.get('profit_margin'),
+            "operating_margin": fundamentals.get('operating_margin'),
+            "revenue_growth": fundamentals.get('quarterly_revenue_growth'),
+            "earnings_growth": fundamentals.get('quarterly_earnings_growth'),
+            "eps": fundamentals.get('eps'),
+            "dividend_yield": fundamentals.get('dividend_yield'),
+            "payout_ratio": fundamentals.get('payout_ratio'),
+            "beta": fundamentals.get('beta'),
+            "market_cap": fundamentals.get('market_cap'),
+            "book_value": fundamentals.get('book_value'),
             "week_52_high": week_52_high,
             "week_52_low": week_52_low,
             "price_vs_52w_high": round((current_price / week_52_high * 100), 2) if week_52_high else None,
             "price_position_52w": round(price_position, 2),
             "ma_50": round(ma_50, 2) if ma_50 else None,
             "ma_200": round(ma_200, 2) if ma_200 else None,
-            "above_ma_50": current_price > ma_50 if ma_50 else None,
-            "above_ma_200": current_price > ma_200 if ma_200 else None,
+            "above_ma_50": current_price > ma_50 if (ma_50 and current_price) else None,
+            "above_ma_200": current_price > ma_200 if (ma_200 and current_price) else None,
             "golden_cross": ma_50 > ma_200 if (ma_50 and ma_200) else None,
-            "analyst_target": info.get("targetMeanPrice"),
-            "analyst_recommendation": info.get("recommendationKey"),
-            "num_analysts": info.get("numberOfAnalystOpinions"),
-            "sector": info.get("sector"),
-            "industry": info.get("industry"),
+            # Technical indicators from Alpha Vantage
+            "rsi": technical.get('rsi'),
+            "macd_signal": technical.get('macd_signal'),
+            "volatility": technical.get('volatility_20d'),
+            "price_change_1d": technical.get('price_change_1d'),
+            "price_change_5d": technical.get('price_change_5d'),
+            "price_change_20d": technical.get('price_change_20d'),
+            # Sentiment
+            "sentiment_score": sentiment.get('average_score'),
+            "sentiment_label": sentiment.get('label'),
+            "news_count": sentiment.get('article_count', 0),
+            # Company info
+            "analyst_target": fundamentals.get('analyst_target'),
+            "sector": fundamentals.get('sector'),
+            "industry": fundamentals.get('industry'),
+            "name": fundamentals.get('name'),
         }
 
     def _calculate_scores(self, metrics: Dict) -> Dict[str, float]:
@@ -253,7 +278,8 @@ class StockAnalyzer:
         # Return on Equity (higher is better, > 15% good)
         roe = metrics.get("roe")
         if roe is not None:
-            roe_pct = roe * 100 if roe < 1 else roe
+            # Alpha Vantage returns ROE as decimal (0.25 = 25%)
+            roe_pct = roe * 100 if abs(roe) < 1 else roe
             if roe_pct < 0:
                 scores["roe"] = 20
             elif roe_pct < 10:
@@ -344,34 +370,50 @@ class StockAnalyzer:
         above_50 = metrics.get("above_ma_50")
         above_200 = metrics.get("above_ma_200")
         golden = metrics.get("golden_cross")
+        rsi = metrics.get("rsi")
+        macd = metrics.get("macd_signal")
 
         ma_score = 50
         if above_50 is True:
-            ma_score += 15
+            ma_score += 10
         if above_200 is True:
-            ma_score += 15
+            ma_score += 10
         if golden is True:
-            ma_score += 20
+            ma_score += 15
         elif golden is False:
             ma_score -= 10  # Death cross
-        scores["moving_avg_signal"] = min(100, ma_score)
 
-        # Analyst Rating
-        rec = metrics.get("analyst_recommendation")
-        if rec:
-            rec_lower = rec.lower()
-            if "strong" in rec_lower and "buy" in rec_lower:
-                scores["analyst_rating"] = 100
-            elif "buy" in rec_lower:
-                scores["analyst_rating"] = 85
-            elif "hold" in rec_lower:
-                scores["analyst_rating"] = 60
-            elif "sell" in rec_lower:
-                scores["analyst_rating"] = 30
+        # Add RSI component
+        if rsi:
+            if rsi < 30:
+                ma_score += 15  # Oversold - potential buy
+            elif rsi > 70:
+                ma_score -= 10  # Overbought
+
+        # Add MACD component
+        if macd == 'bullish':
+            ma_score += 10
+        elif macd == 'bearish':
+            ma_score -= 5
+
+        scores["moving_avg_signal"] = min(100, max(0, ma_score))
+
+        # Sentiment Score (from news)
+        sentiment_score = metrics.get("sentiment_score")
+        if sentiment_score is not None:
+            # Alpha Vantage sentiment ranges from -1 to 1
+            if sentiment_score > 0.25:
+                scores["sentiment"] = 90  # Very bullish
+            elif sentiment_score > 0.1:
+                scores["sentiment"] = 75  # Bullish
+            elif sentiment_score > -0.1:
+                scores["sentiment"] = 50  # Neutral
+            elif sentiment_score > -0.25:
+                scores["sentiment"] = 35  # Bearish
             else:
-                scores["analyst_rating"] = 50
+                scores["sentiment"] = 20  # Very bearish
         else:
-            scores["analyst_rating"] = 50
+            scores["sentiment"] = 50
 
         return scores
 
@@ -426,11 +468,24 @@ class StockAnalyzer:
         elif metrics.get("golden_cross") is False:
             reasons.append("Bearish death cross pattern (50MA < 200MA)")
 
+        rsi = metrics.get("rsi")
+        if rsi:
+            if rsi < 30:
+                reasons.append(f"RSI of {rsi:.0f} indicates oversold conditions")
+            elif rsi > 70:
+                reasons.append(f"RSI of {rsi:.0f} indicates overbought conditions")
+
         rev_growth = metrics.get("revenue_growth")
         if rev_growth and rev_growth > 0.15:
             reasons.append(f"Strong revenue growth of {rev_growth*100:.1f}%")
         elif rev_growth and rev_growth < 0:
             reasons.append(f"Revenue declining by {abs(rev_growth)*100:.1f}%")
+
+        sentiment = metrics.get("sentiment_label")
+        if sentiment == "Bullish":
+            reasons.append("Positive news sentiment")
+        elif sentiment == "Bearish":
+            reasons.append("Negative news sentiment")
 
         return {
             "action": action,
@@ -456,6 +511,20 @@ class StockAnalyzer:
             if score < 50:
                 concerns.append(f"{metric.replace('_', ' ').title()}: {score}/100")
         return concerns
+
+    def _summarize_news(self, news: List[Dict], sentiment: Dict) -> Dict:
+        """Summarize news and sentiment data."""
+        if not news:
+            return {"message": "No recent news available"}
+
+        return {
+            "article_count": len(news),
+            "sentiment": sentiment.get('label', 'Neutral'),
+            "sentiment_score": sentiment.get('average_score', 0),
+            "bullish_articles": sentiment.get('bullish_count', 0),
+            "bearish_articles": sentiment.get('bearish_count', 0),
+            "recent_headlines": [n.get('title', '')[:100] for n in news[:3]],
+        }
 
     def review_predictions(self) -> Dict:
         """Review past predictions and adjust weights based on accuracy."""
@@ -514,7 +583,7 @@ class StockAnalyzer:
         report_lines = [
             "# Stock Analysis Report",
             f"\n**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"\n**Analyzer Version:** 1.0",
+            f"\n**Data Source:** Alpha Vantage",
             f"\n**Symbols Analyzed:** {len(symbols)}",
             "\n---\n",
             "## Executive Summary\n",
@@ -534,9 +603,11 @@ class StockAnalyzer:
         report_lines.append("|------|--------|-------|----------------|-------|")
 
         for i, a in enumerate(analyses, 1):
+            price = a.get('price', 0)
+            price_str = f"${price:.2f}" if price else "N/A"
             report_lines.append(
                 f"| {i} | **{a['symbol']}** | {a['overall_score']}/100 | "
-                f"{a['recommendation']['action']} | ${a['price']:.2f} |"
+                f"{a['recommendation']['action']} | {price_str} |"
             )
 
         report_lines.append("\n---\n")
@@ -564,8 +635,8 @@ class StockAnalyzer:
             "eps_growth": "Earnings per share growth",
             "dividend_yield": "Annual dividend yield",
             "price_vs_52w": "Position in 52-week price range",
-            "moving_avg_signal": "50/200-day moving average signals",
-            "analyst_rating": "Wall Street analyst consensus",
+            "moving_avg_signal": "Technical indicators (MA, RSI, MACD)",
+            "sentiment": "News sentiment from Alpha Vantage",
         }
 
         for metric, weight in sorted(self.weights.items(), key=lambda x: x[1], reverse=True):
@@ -577,7 +648,7 @@ class StockAnalyzer:
             "*This analysis is for informational purposes only and should not be considered financial advice. "
             "Always conduct your own research and consult with a qualified financial advisor before making "
             "investment decisions.*\n",
-            f"\n---\n*Report generated by Portfolio Tracker Stock Analyzer*"
+            f"\n---\n*Report generated by Portfolio Tracker Stock Analyzer (Alpha Vantage)*"
         ])
 
         report = "\n".join(report_lines)
@@ -590,12 +661,15 @@ class StockAnalyzer:
 
     def _format_analysis(self, analysis: Dict) -> List[str]:
         """Format a single stock analysis for the report."""
+        price = analysis.get('price', 0)
+        price_str = f"${price:.2f}" if price else "N/A"
+
         lines = [
             f"### {analysis['symbol']}",
             f"\n**Score:** {analysis['overall_score']}/100 | "
             f"**Recommendation:** {analysis['recommendation']['action']} | "
             f"**Confidence:** {analysis['recommendation']['confidence']}",
-            f"\n**Current Price:** ${analysis['price']:.2f}",
+            f"\n**Current Price:** {price_str}",
             "\n#### Key Metrics",
             "| Metric | Value | Score |",
             "|--------|-------|-------|",
@@ -611,7 +685,9 @@ class StockAnalyzer:
             ("Debt/Equity", m.get('debt_to_equity'), s.get('debt_to_equity')),
             ("ROE", m.get('roe'), s.get('roe')),
             ("Revenue Growth", m.get('revenue_growth'), s.get('revenue_growth')),
+            ("RSI", m.get('rsi'), None),
             ("52W Position", m.get('price_position_52w'), s.get('price_vs_52w')),
+            ("Sentiment", m.get('sentiment_label'), s.get('sentiment')),
         ]
 
         for name, value, score in metrics_to_show:
@@ -619,13 +695,13 @@ class StockAnalyzer:
                 if isinstance(value, float):
                     if 'Growth' in name or 'ROE' in name:
                         val_str = f"{value*100:.1f}%" if abs(value) < 1 else f"{value:.1f}%"
-                    elif 'Position' in name:
-                        val_str = f"{value:.0f}%"
+                    elif 'Position' in name or 'RSI' in name:
+                        val_str = f"{value:.0f}"
                     else:
                         val_str = f"{value:.2f}"
                 else:
                     val_str = str(value)
-                score_str = f"{score:.0f}/100" if score else "N/A"
+                score_str = f"{score:.0f}/100" if score else "-"
                 lines.append(f"| {name} | {val_str} | {score_str} |")
 
         lines.append("\n#### Analysis")
@@ -641,6 +717,13 @@ class StockAnalyzer:
             lines.append("\n**Concerns:**")
             for concern in analysis['key_concerns']:
                 lines.append(f"- {concern}")
+
+        # Add news summary
+        news_summary = analysis.get('news_summary', {})
+        if news_summary.get('recent_headlines'):
+            lines.append("\n**Recent News:**")
+            for headline in news_summary['recent_headlines']:
+                lines.append(f"- {headline}")
 
         return lines
 
