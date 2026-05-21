@@ -374,3 +374,101 @@ class DataCollector:
     def get_all_data(self) -> Dict:
         """Get all cached data."""
         return self.data
+
+    def get_signals(self, symbol: str) -> Dict:
+        """Generate trading signals based on collected data."""
+        stock_data = self.get_stock_data(symbol)
+        if not stock_data:
+            return {'error': f'No data collected for {symbol}'}
+
+        tech = stock_data.get('technical', {})
+        fund = stock_data.get('fundamentals', {})
+        sent = stock_data.get('sentiment', {})
+
+        signals = {
+            'symbol': symbol.upper(),
+            'signals': [],
+            'overall': 'NEUTRAL',
+            'score': 0,
+        }
+
+        score = 0
+
+        # RSI signals
+        rsi = tech.get('rsi')
+        if rsi:
+            if rsi < 30:
+                signals['signals'].append({'indicator': 'RSI', 'signal': 'OVERSOLD', 'value': rsi})
+                score += 2
+            elif rsi > 70:
+                signals['signals'].append({'indicator': 'RSI', 'signal': 'OVERBOUGHT', 'value': rsi})
+                score -= 2
+            else:
+                signals['signals'].append({'indicator': 'RSI', 'signal': 'NEUTRAL', 'value': rsi})
+
+        # MACD signals
+        macd = tech.get('macd_signal')
+        if macd:
+            if macd == 'bullish':
+                signals['signals'].append({'indicator': 'MACD', 'signal': 'BULLISH'})
+                score += 1
+            else:
+                signals['signals'].append({'indicator': 'MACD', 'signal': 'BEARISH'})
+                score -= 1
+
+        # Moving average signals
+        price_vs_50 = tech.get('price_vs_sma50')
+        if price_vs_50 is not None:
+            if price_vs_50 > 5:
+                signals['signals'].append({'indicator': '50 SMA', 'signal': 'ABOVE', 'value': f'{price_vs_50:.1f}%'})
+                score += 1
+            elif price_vs_50 < -5:
+                signals['signals'].append({'indicator': '50 SMA', 'signal': 'BELOW', 'value': f'{price_vs_50:.1f}%'})
+                score -= 1
+
+        # Valuation signals
+        pe = fund.get('pe_ratio')
+        if pe:
+            if pe < 15:
+                signals['signals'].append({'indicator': 'P/E', 'signal': 'UNDERVALUED', 'value': pe})
+                score += 1
+            elif pe > 30:
+                signals['signals'].append({'indicator': 'P/E', 'signal': 'EXPENSIVE', 'value': pe})
+                score -= 1
+
+        # Sentiment signals
+        sent_score = sent.get('average_score', 0)
+        if sent_score > 0.1:
+            signals['signals'].append({'indicator': 'Sentiment', 'signal': 'BULLISH', 'value': sent_score})
+            score += 1
+        elif sent_score < -0.1:
+            signals['signals'].append({'indicator': 'Sentiment', 'signal': 'BEARISH', 'value': sent_score})
+            score -= 1
+
+        signals['score'] = score
+        if score >= 3:
+            signals['overall'] = 'STRONG BUY'
+        elif score >= 1:
+            signals['overall'] = 'BUY'
+        elif score <= -3:
+            signals['overall'] = 'STRONG SELL'
+        elif score <= -1:
+            signals['overall'] = 'SELL'
+        else:
+            signals['overall'] = 'NEUTRAL'
+
+        return signals
+
+    def get_collection_stats(self) -> Dict:
+        """Get data collection statistics."""
+        stocks = self.data.get('stocks', {})
+        return {
+            'total_symbols': len(stocks),
+            'symbols': list(stocks.keys()),
+            'last_collection': self.data.get('last_collection'),
+            'api_requests_this_session': self.request_count,
+        }
+
+
+# Global instance
+data_collector = DataCollector()
