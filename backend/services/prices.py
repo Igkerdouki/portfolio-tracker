@@ -1,7 +1,14 @@
-import yfinance as yf
+import os
+import requests
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 import threading
+from dotenv import load_dotenv
+
+load_dotenv()
+
+ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query"
 
 
 class PriceCache:
@@ -31,37 +38,50 @@ price_cache = PriceCache(ttl_seconds=60)
 
 
 def get_current_price(symbol: str) -> Optional[dict]:
-    """Fetch current price for a symbol with caching."""
+    """Fetch current price for a symbol using Alpha Vantage."""
     cached = price_cache.get(symbol)
     if cached:
         return cached
 
     try:
-        ticker = yf.Ticker(symbol)
-        info = ticker.info
+        # Use GLOBAL_QUOTE for current price
+        params = {
+            "function": "GLOBAL_QUOTE",
+            "symbol": symbol,
+            "apikey": ALPHA_VANTAGE_API_KEY
+        }
 
-        # Try different price fields as Yahoo Finance can be inconsistent
-        price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose")
+        response = requests.get(ALPHA_VANTAGE_BASE_URL, params=params, timeout=10)
+        data = response.json()
 
-        if price is None:
-            # Try getting from history as fallback
-            hist = ticker.history(period="1d")
-            if not hist.empty:
-                price = hist["Close"].iloc[-1]
-
-        if price is None:
+        # Check for API errors
+        if "Error Message" in data:
+            print(f"Alpha Vantage error for {symbol}: {data['Error Message']}")
             return None
 
-        previous_close = info.get("previousClose", price)
-        change = price - previous_close if previous_close else 0
-        change_percent = (change / previous_close * 100) if previous_close else 0
+        if "Note" in data:  # Rate limit message
+            print(f"Alpha Vantage rate limit: {data['Note']}")
+            return None
+
+        quote = data.get("Global Quote", {})
+        if not quote:
+            print(f"No quote data for {symbol}")
+            return None
+
+        price = float(quote.get("05. price", 0))
+        previous_close = float(quote.get("08. previous close", price))
+        change = float(quote.get("09. change", 0))
+        change_percent = quote.get("10. change percent", "0%").replace("%", "")
+
+        if price == 0:
+            return None
 
         result = {
             "symbol": symbol.upper(),
             "price": round(price, 2),
-            "currency": info.get("currency", "USD"),
+            "currency": "USD",  # Alpha Vantage returns USD prices
             "change": round(change, 2),
-            "change_percent": round(change_percent, 2)
+            "change_percent": round(float(change_percent), 2)
         }
 
         price_cache.set(symbol, result)
@@ -83,19 +103,39 @@ def get_prices_batch(symbols: list[str]) -> Dict[str, dict]:
 
 
 def get_historical_prices(symbol: str, period: str = "1mo") -> list[dict]:
-    """Fetch historical prices for a symbol."""
+    """Fetch historical prices for a symbol using Alpha Vantage."""
     try:
-        ticker = yf.Ticker(symbol)
-        hist = ticker.history(period=period)
+        # Map period to outputsize
+        outputsize = "compact"  # Last 100 data points
+        if period in ["3mo", "6mo", "1y"]:
+            outputsize = "full"
 
-        return [
-            {
-                "date": date.strftime("%Y-%m-%d"),
-                "close": round(row["Close"], 2),
-                "volume": int(row["Volume"])
-            }
-            for date, row in hist.iterrows()
-        ]
+        params = {
+            "function": "TIME_SERIES_DAILY",
+            "symbol": symbol,
+            "outputsize": outputsize,
+            "apikey": ALPHA_VANTAGE_API_KEY
+        }
+
+        response = requests.get(ALPHA_VANTAGE_BASE_URL, params=params, timeout=10)
+        data = response.json()
+
+        if "Error Message" in data or "Note" in data:
+            return []
+
+        time_series = data.get("Time Series (Daily)", {})
+
+        # Convert to list format
+        results = []
+        for date_str, values in sorted(time_series.items(), reverse=True)[:30]:  # Last 30 days
+            results.append({
+                "date": date_str,
+                "close": round(float(values["4. close"]), 2),
+                "volume": int(float(values["5. volume"]))
+            })
+
+        return list(reversed(results))  # Oldest first
+
     except Exception as e:
         print(f"Error fetching history for {symbol}: {e}")
         return []
