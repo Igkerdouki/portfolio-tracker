@@ -1,0 +1,8 @@
+IMPORTANT GIT RULES - READ BEFORE EVERY COMMIT
+
+1. NEVER add "Co-Authored-By: Claude" or any Claude attribution to commits
+2. NEVER mention Claude, Anthropic, or AI in commit messages
+3. Keep commit messages simple and descriptive
+4. The user is the sole author of all commits
+
+VIOLATION OF THESE RULES REQUIRES DELETING AND RECREATING THE REPO
