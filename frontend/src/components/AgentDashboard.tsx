@@ -632,7 +632,9 @@ export function AgentDashboard() {
                     </div>
                   )}
                   {signal.reasons && signal.reasons.length > 0 && (
-                    <p className="text-xs text-gray-600 mt-1 truncate">{signal.reasons[0]}</p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {signal.reasons.join(' • ')}
+                    </p>
                   )}
                   {signal.source && (
                     <p className="text-xs text-gray-400 mt-1">Source: {signal.source}</p>

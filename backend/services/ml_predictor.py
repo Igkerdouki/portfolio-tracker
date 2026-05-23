@@ -371,7 +371,8 @@ class Backtester:
         self,
         df: pd.DataFrame,
         predictions: np.ndarray,
-        strategy: str = "long_short"
+        strategy: str = "long_short",
+        full_period_df: pd.DataFrame = None
     ) -> Dict:
         """
         Run backtest on historical data.
@@ -379,7 +380,7 @@ class Backtester:
         Strategies:
         - long_short: Go long when predicted UP, short when predicted DOWN
         - long_only: Go long when predicted UP, cash otherwise
-        - buy_hold: Simple buy and hold benchmark
+        - buy_hold: Simple buy and hold benchmark (uses full period if provided)
         """
         df = df.copy()
         returns = df['return_1d'].values
@@ -398,8 +399,14 @@ class Backtester:
             positions = np.where(aligned_preds == 1, 1, 0)
             strategy_returns = positions * aligned_returns
         else:  # buy_hold
-            strategy_returns = aligned_returns
-            positions = np.ones_like(aligned_returns)
+            # For buy_hold, use full period if available for accurate comparison
+            if full_period_df is not None and len(full_period_df) > 0:
+                full_returns = full_period_df['return_1d'].dropna().values
+                strategy_returns = full_returns
+                positions = np.ones_like(full_returns)
+            else:
+                strategy_returns = aligned_returns
+                positions = np.ones_like(aligned_returns)
 
         # Calculate equity curve
         equity_curve = self.initial_capital * np.cumprod(1 + strategy_returns)
@@ -588,6 +595,42 @@ class MLTradingSystem:
         long_only_results = self.backtester.run_backtest(test_features, predictions, "long_only")
         buy_hold_results = self.backtester.run_backtest(test_features, predictions, "buy_hold")
 
+        # SANITY CHECK: Calculate actual Buy & Hold return from price data
+        # This is the true test - did the stock go up or down during test period?
+        test_start_price = test_df['Close'].iloc[0]
+        test_end_price = test_df['Close'].iloc[-1]
+        actual_buy_hold_return = ((test_end_price / test_start_price) - 1) * 100
+
+        # If there's a significant mismatch, use the actual price-based calculation
+        if abs(actual_buy_hold_return - buy_hold_results["total_return_pct"]) > 5:
+            # Recalculate buy & hold with proper equity curve
+            test_returns_clean = test_df['return_1d'].dropna().values
+            equity_curve = self.backtester.initial_capital * np.cumprod(1 + test_returns_clean)
+
+            # Recalculate metrics
+            sharpe = np.sqrt(252) * np.mean(test_returns_clean) / np.std(test_returns_clean) if np.std(test_returns_clean) > 0 else 0
+            peak = np.maximum.accumulate(equity_curve)
+            drawdown = (equity_curve - peak) / peak
+            max_drawdown = np.min(drawdown) * 100
+
+            buy_hold_results = {
+                "strategy": "buy_hold",
+                "total_return_pct": float(actual_buy_hold_return),
+                "annual_return_pct": float(actual_buy_hold_return * (252 / len(test_df))),
+                "sharpe_ratio": float(sharpe),
+                "max_drawdown_pct": float(max_drawdown),
+                "win_rate_pct": float((test_returns_clean > 0).sum() / len(test_returns_clean) * 100),
+                "total_trades": len(test_returns_clean),
+                "winning_trades": int((test_returns_clean > 0).sum()),
+                "final_equity": float(equity_curve[-1] if len(equity_curve) > 0 else self.backtester.initial_capital),
+                "equity_curve": equity_curve.tolist() if len(equity_curve) > 0 else []
+            }
+
+        # Also calculate FULL PERIOD buy & hold for context
+        full_start_price = df['Close'].iloc[0]
+        full_end_price = df['Close'].iloc[-1]
+        full_period_return = ((full_end_price / full_start_price) - 1) * 100
+
         # Calculate strategy returns for Monte Carlo
         test_returns = test_features['return_1d'].values
         positions = np.where(predictions[:-1] == 1, 1, -1)
@@ -609,13 +652,19 @@ class MLTradingSystem:
                 "date_range": {
                     "start": str(df.index[0].date()),
                     "end": str(df.index[-1].date())
+                },
+                "test_period": {
+                    "start": str(test_df.index[0].date()),
+                    "end": str(test_df.index[-1].date())
                 }
             },
             "training": training_result,
             "backtest": {
                 "long_short": long_short_results,
                 "long_only": long_only_results,
-                "buy_hold": buy_hold_results
+                "buy_hold": buy_hold_results,
+                "full_period_buy_hold_pct": float(full_period_return),
+                "note": "All strategies compared on same TEST PERIOD for fair comparison"
             },
             "monte_carlo": monte_carlo,
             "current_prediction": current_prediction,

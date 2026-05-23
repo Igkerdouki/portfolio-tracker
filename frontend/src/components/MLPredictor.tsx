@@ -50,6 +50,7 @@ interface FullResult {
     training_samples: number;
     test_samples: number;
     date_range: { start: string; end: string };
+    test_period?: { start: string; end: string };
   };
   training: {
     cv_accuracy?: number;
@@ -60,6 +61,8 @@ interface FullResult {
     long_short: BacktestResult;
     long_only: BacktestResult;
     buy_hold: BacktestResult;
+    full_period_buy_hold_pct?: number;
+    note?: string;
   };
   monte_carlo: MonteCarloResult;
   current_prediction: Prediction;
@@ -254,14 +257,34 @@ export function MLPredictor() {
                 </p>
               </div>
             </div>
-            <p className="text-xs text-gray-400 mt-3">
-              Date range: {result.data_info.date_range.start} to {result.data_info.date_range.end}
-            </p>
+            <div className="mt-3 text-xs text-gray-400 space-y-1">
+              <p>Full data: {result.data_info.date_range.start} to {result.data_info.date_range.end}</p>
+              {result.data_info.test_period && (
+                <p className="text-amber-600 font-medium">
+                  ⚠️ Test period: {result.data_info.test_period.start} to {result.data_info.test_period.end} (last {result.data_info.test_samples} days)
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Strategy Comparison */}
           <div className="bg-white rounded-xl shadow p-6">
-            <h3 className="font-semibold text-gray-900 mb-4">Strategy Comparison (Test Period)</h3>
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="font-semibold text-gray-900">Strategy Comparison (Test Period)</h3>
+                {result.backtest.note && (
+                  <p className="text-xs text-amber-600 mt-1">{result.backtest.note}</p>
+                )}
+              </div>
+              {result.backtest.full_period_buy_hold_pct !== undefined && (
+                <div className="text-right bg-gray-50 rounded-lg px-3 py-2">
+                  <p className="text-xs text-gray-500">Full Period Buy & Hold</p>
+                  <p className={`text-lg font-bold ${result.backtest.full_period_buy_hold_pct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {result.backtest.full_period_buy_hold_pct >= 0 ? '+' : ''}{result.backtest.full_period_buy_hold_pct.toFixed(2)}%
+                  </p>
+                </div>
+              )}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
