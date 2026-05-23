@@ -18,12 +18,12 @@ export function ChatInterface() {
   useEffect(() => {
     setMessages([{
       role: 'assistant',
-      content: `Hey! 👋 I'm your AI investment advisor.
+      content: `Hey there! I'm your AI investment advisor.
 
-I'm here to help you understand investing and make smarter decisions. Whether you're new or experienced, I've got you covered.
+I help you understand investing and make smarter decisions - whether you're a beginner or experienced.
 
-**What can I help with?**
-- Analyze any stock - just mention the name
+**What I can help with:**
+- Analyze any stock
 - Explain investing terms simply
 - Discuss strategies and timing
 - Help you think through decisions
@@ -117,15 +117,8 @@ What's on your mind?`,
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[500px]">
       {/* Header */}
       <div className="p-5 border-b border-slate-700/50" style={{ backgroundColor: '#1a1f4e' }}>
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center text-2xl" style={{ backgroundColor: '#0d1230' }}>
-            💬
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-white">AI Investment Advisor</h2>
-            <p className="text-sm" style={{ color: '#94a3b8' }}>Ask anything about stocks and investing</p>
-          </div>
-        </div>
+        <h2 className="text-lg font-bold" style={{ color: '#f59e0b' }}>AI Advisor</h2>
+        <p className="text-sm" style={{ color: '#94a3b8' }}>Ask anything about stocks and investing</p>
       </div>
 
       {/* Messages */}
@@ -145,7 +138,6 @@ What's on your mind?`,
             >
               {msg.role === 'assistant' && (
                 <div className="flex items-center gap-2 mb-2 pb-2 border-b" style={{ borderColor: '#2a3158' }}>
-                  <span className="text-base">🤖</span>
                   <span className="text-sm font-medium" style={{ color: '#f59e0b' }}>AI Advisor</span>
                   {msg.hasData && (
                     <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#22c55e20', color: '#22c55e' }}>

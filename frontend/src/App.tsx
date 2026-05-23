@@ -58,16 +58,11 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
             {/* Logo */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: '#1a1f4e' }}>
-                <span style={{ color: '#f59e0b' }}>📈</span>
-              </div>
-              <div>
-                <h1 className="text-xl font-bold" style={{ color: '#f59e0b' }}>
-                  Portfolio Tracker
-                </h1>
-                <p className="text-xs text-slate-400">Smart Investment Tools</p>
-              </div>
+            <div>
+              <h1 className="text-xl font-bold" style={{ color: '#f59e0b' }}>
+                Wealth Buddy
+              </h1>
+              <p className="text-xs text-slate-400">Your Investment Companion</p>
             </div>
 
             {/* Status */}
