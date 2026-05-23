@@ -228,79 +228,252 @@ Please use this real data in your response to give accurate, data-driven advice.
     def _fallback_response(self, message: str, symbols: List[str], stock_context: str) -> Dict:
         """Provide helpful response when API is unavailable."""
 
+        message_lower = message.lower()
+
         # Check if it's a greeting
         greetings = ['hi', 'hello', 'hey', 'good morning', 'good evening']
-        if any(g in message.lower() for g in greetings):
+        if any(g in message_lower for g in greetings):
             return {
                 "type": "greeting",
-                "message": """Hey there! 👋 Welcome to Yiayia's Alpha - your friendly investment buddy!
+                "message": """Hey there! Welcome to your investment advisor.
 
-I'm here to help you understand investing and make smarter decisions with your money. Whether you're a complete beginner or just want a second opinion, I've got your back!
+I'm here to help you understand investing and make smarter decisions with your money. Whether you're a complete beginner or experienced trader, I've got you covered.
 
-**Here's what I can help you with:**
-- 📊 Analyze any stock (just mention the name or symbol)
-- 📚 Explain investing terms in simple English
-- 💡 Discuss investment strategies
-- ⚖️ Help you think through buy/sell decisions
+**What I can help with:**
+- Analyze any stock (just mention the name or symbol)
+- Explain investing terms in simple English
+- Discuss investment strategies
+- Help you think through buy/sell decisions
 
-**Try asking me things like:**
-- "Tell me about Tesla - should I invest?"
+**Try asking:**
+- "Tell me about Tesla"
 - "What does P/E ratio mean?"
 - "Is Apple a good long-term investment?"
-- "Explain what a Sharpe ratio is like I'm 5"
+- "Explain Sharpe ratio simply"
 
-What would you like to explore today? 😊""",
+What would you like to explore?""",
                 "timestamp": datetime.now().isoformat()
             }
+
+        # Financial term explanations
+        term_explanations = {
+            'p/e': """**P/E Ratio (Price-to-Earnings)**
+
+Think of it as "how many years of profits you're paying for."
+
+**Example:** If a stock has P/E of 20, you're paying $20 for every $1 of annual profit.
+
+**What's good?**
+- Under 15: Often considered cheap/value
+- 15-25: Average range
+- Over 25: Expensive, but growth stocks often have high P/E
+
+**Watch out:** A low P/E isn't always good - the company might be struggling. High P/E isn't always bad - fast-growing companies deserve higher valuations.
+
+**Compare within the same industry** - tech stocks normally have higher P/E than banks.""",
+
+            'sharpe': """**Sharpe Ratio**
+
+Measures how much return you get for the risk you take. Named after Nobel laureate William Sharpe.
+
+**Simple version:** "Reward per unit of stress"
+
+**What's good?**
+- Under 1: Not great risk-adjusted returns
+- 1-2: Good
+- 2-3: Very good
+- Over 3: Excellent (rare to sustain)
+
+**Why it matters:** A 20% return sounds great, but not if you had to stomach 50% swings. Sharpe ratio accounts for that volatility.
+
+**Formula (simplified):** (Your Return - Risk-Free Rate) / Your Volatility""",
+
+            'rsi': """**RSI (Relative Strength Index)**
+
+A momentum indicator from 0-100 that shows if a stock is "overbought" or "oversold."
+
+**How to read it:**
+- Above 70: Overbought - many buyers already in, price might cool off
+- Below 30: Oversold - heavy selling, might bounce back
+- 30-70: Neutral zone
+
+**Important:** RSI doesn't predict the future! A stock can stay overbought for months during strong trends.
+
+**Best use:** Combine with other indicators. Don't buy just because RSI is low, or sell just because it's high.""",
+
+            'macd': """**MACD (Moving Average Convergence Divergence)**
+
+A trend-following indicator that shows momentum direction.
+
+**Three parts:**
+1. MACD Line (fast) - 12-day EMA minus 26-day EMA
+2. Signal Line (slow) - 9-day EMA of MACD
+3. Histogram - difference between the two
+
+**Trading signals:**
+- MACD crosses ABOVE signal = bullish
+- MACD crosses BELOW signal = bearish
+- Histogram getting bigger = momentum increasing
+
+**Best for:** Confirming trends, not predicting reversals.""",
+
+            'dividend': """**Dividends**
+
+Cash payments companies make to shareholders, usually quarterly.
+
+**Key terms:**
+- **Dividend Yield:** Annual dividend / Stock price (e.g., 3% yield)
+- **Payout Ratio:** % of profits paid as dividends
+- **Ex-Dividend Date:** Must own before this date to get dividend
+
+**Good dividend stocks typically have:**
+- Long history of payments
+- Payout ratio under 70%
+- Stable cash flow business
+
+**Watch out:** Very high yields (8%+) might mean the stock price dropped or dividend could be cut.""",
+
+            'market cap': """**Market Cap (Market Capitalization)**
+
+Total value of all a company's shares. Price per share × Number of shares.
+
+**Size categories:**
+- **Large Cap:** Over $10 billion (Apple, Microsoft, etc.)
+- **Mid Cap:** $2-10 billion
+- **Small Cap:** $300 million - $2 billion
+- **Micro Cap:** Under $300 million
+
+**Why it matters:**
+- Large caps: More stable, less growth potential
+- Small caps: More volatile, higher growth potential
+- Index funds often track by market cap"""
+        }
+
+        # Check for term explanations
+        for term, explanation in term_explanations.items():
+            if term in message_lower or term.replace('/', '') in message_lower.replace(' ', ''):
+                return {
+                    "type": "explanation",
+                    "message": explanation,
+                    "timestamp": datetime.now().isoformat()
+                }
 
         # If asking about a stock
         if symbols and stock_context:
             symbol = symbols[0]
             return {
                 "type": "stock_analysis",
-                "message": f"""Great question about {symbol}! Let me break this down for you. 📊
+                "message": f"""Here's my analysis of **{symbol}**:
 
 {stock_context}
 
-**My Quick Take:**
-Based on this data, here's what stands out:
+**Quick Take:**
 
-1. **Recent Performance**: Look at those monthly returns - they tell you the recent momentum
-2. **RSI Level**: If it's above 70, the stock might be "overbought" (lots of buyers recently). Below 30 means "oversold" (lots of sellers)
-3. **vs 50-day MA**: If the price is above this average, it's in an uptrend. Below = downtrend
+1. **Recent Performance**: The monthly/quarterly returns show recent momentum direction
+2. **RSI Level**: Above 70 = overbought (might cool off), Below 30 = oversold (might bounce)
+3. **vs 50-day MA**: Above = uptrend, Below = downtrend
 
-**What This Means For You:**
-To give you truly personalized advice, I'd love to know:
-- Are you looking to invest for the long term (years) or short term (weeks/months)?
-- How much risk are you comfortable with?
-- Do you already own this stock or thinking of buying?
+**What to consider:**
+- What's your timeframe - long term (years) or short term (months)?
+- How much volatility can you handle?
+- Does this fit your overall portfolio?
 
-Tell me more about your situation and I'll give you a more specific take! 💬
+**Key questions to research:**
+- What's driving recent price movement?
+- How does it compare to competitors?
+- What's the growth outlook?
 
-*Remember: I'm here to educate, not give financial advice. Always do your own research! 📚*""",
+*Remember: This is educational analysis, not financial advice. Always do your own research.*""",
                 "symbols": symbols,
+                "has_real_data": True,
+                "timestamp": datetime.now().isoformat()
+            }
+
+        # Recommendation requests
+        if any(word in message_lower for word in ['recommend', 'suggest', 'should i buy', 'good stock', 'best stock']):
+            return {
+                "type": "recommendation",
+                "message": """**How to Find Good Stocks**
+
+Rather than give you specific picks (which depends on YOUR situation), here's a framework:
+
+**For Beginners:**
+- Start with broad ETFs like SPY (S&P 500) or VTI (Total Market)
+- Less risk, instant diversification
+- Warren Buffett recommends this for most people
+
+**If You Want Individual Stocks:**
+
+1. **Blue Chips** (Lower risk): Apple, Microsoft, Johnson & Johnson
+   - Stable, profitable, dividend payers
+
+2. **Growth** (Higher risk/reward): Companies growing revenue 20%+ yearly
+   - More volatile but higher potential
+
+3. **Value** (Patience required): Underpriced relative to earnings
+   - Requires more research
+
+**My Advice:**
+- Don't put all eggs in one basket
+- Only invest what you can leave for 5+ years
+- Learn basics before picking individual stocks
+
+What's your experience level and goal? I can give more specific guidance.""",
+                "timestamp": datetime.now().isoformat()
+            }
+
+        # Long term vs short term
+        if 'long term' in message_lower or 'short term' in message_lower:
+            return {
+                "type": "educational",
+                "message": """**Long Term vs Short Term Investing**
+
+**Long Term (1+ years):**
+- Focus on fundamentals, not daily price moves
+- Benefits from compound growth
+- Lower taxes (long-term capital gains)
+- Less stressful, fewer decisions
+- Best for: retirement, wealth building
+
+**Short Term (days to months):**
+- More about technical analysis and momentum
+- Higher taxes (short-term = income tax rate)
+- Requires more time and attention
+- Higher risk of loss
+- Best for: active traders with time to monitor
+
+**The Data Says:**
+Studies show most day traders lose money. Long-term buy-and-hold beats active trading for most people.
+
+**My Take:**
+Unless you have significant time to dedicate, long-term investing in quality companies or ETFs is the way to go.
+
+What's your situation?""",
                 "timestamp": datetime.now().isoformat()
             }
 
         # General investing question
         return {
             "type": "educational",
-            "message": """That's a great question! 🤔
+            "message": """Good question! To give you the best answer, could you tell me:
 
-I want to give you a thoughtful, personalized answer. Could you tell me a bit more about:
+1. **What specifically** are you trying to understand or decide?
+2. **Your experience** - new to investing or have some background?
+3. **Any specific stocks** you're looking at?
 
-1. **Your experience level** - Are you new to investing or have some experience?
-2. **Your goal** - Growing wealth long-term? Generating income? Short-term gains?
-3. **Specific stocks or topics** - Any particular companies or concepts you're curious about?
+**Some things I can help with:**
+- Explain any investing term (P/E, RSI, Sharpe ratio, etc.)
+- Analyze specific stocks with real data
+- Discuss strategies (long-term, dividends, growth, etc.)
+- Compare investment options
 
-The more context you give me, the better I can help!
+Just ask! For example:
+- "What does P/E ratio mean?"
+- "Analyze Tesla for me"
+- "Should I invest in ETFs or individual stocks?"
+- "Explain dividends"
 
-For example, you could ask:
-- "I'm new to investing and have $1000 to start - where should I begin?"
-- "Analyze AAPL for me - I'm thinking of buying"
-- "What's the difference between stocks and ETFs?"
-
-I'm all ears! 👂""",
+What's on your mind?""",
             "timestamp": datetime.now().isoformat()
         }
 

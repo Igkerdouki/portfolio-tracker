@@ -6,6 +6,7 @@ API endpoints for Claude-powered investment chat interface.
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from services.intelligent_agent import intelligent_agent
 from services.claude_chat import claude_advisor
 from services.agent_chat import agent_chat
 from services.stock_screener import stock_screener
@@ -28,19 +29,20 @@ class ChatResponse(BaseModel):
 @router.post("/message")
 async def send_message(msg: ChatMessage):
     """
-    Send a message to the Claude-powered investment advisor.
-    Provides friendly, educational, data-driven investment advice.
+    Send a message to the intelligent AI finance agent.
+    Uses Claude API for intelligent responses with real market data.
     """
     try:
-        response = await claude_advisor.chat(msg.message)
+        response = await intelligent_agent.chat(msg.message)
         return response
     except Exception as e:
-        # Fallback to basic agent if Claude fails
-        try:
-            response = agent_chat.process_message(msg.message)
-            return response
-        except:
-            raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/feedback")
+async def provide_feedback(feedback: ChatMessage):
+    """Provide feedback to help the agent learn."""
+    return intelligent_agent.provide_feedback(feedback.message)
 
 
 @router.get("/history")
