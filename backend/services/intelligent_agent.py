@@ -1,6 +1,6 @@
 """
 Intelligent Finance Agent
-A sophisticated AI agent powered by LLMs (Groq/Anthropic) with memory, learning, and real data integration.
+A sophisticated AI agent powered by LLMs (Claude Code/Groq/Anthropic) with memory, learning, and real data integration.
 """
 
 import os
@@ -9,7 +9,15 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-# Try Groq first (free tier available)
+# Try Claude Code tmux orchestrator first (uses subscription)
+try:
+    from .claude_tmux import claude_tmux
+    HAS_CLAUDE_TMUX = True
+except ImportError:
+    HAS_CLAUDE_TMUX = False
+    claude_tmux = None
+
+# Try Groq (free tier available)
 try:
     from groq import Groq
     HAS_GROQ = True
@@ -152,35 +160,44 @@ class IntelligentFinanceAgent:
 You have access to real-time market data. Use it to make your answers specific and data-driven."""
 
     def __init__(self):
+        self.use_tmux = os.environ.get('USE_CLAUDE_TMUX', '').lower() in ('1', 'true', 'yes')
         self.groq_key = os.environ.get('GROQ_API_KEY', '')
         self.anthropic_key = os.environ.get('ANTHROPIC_API_KEY', '')
         self.groq_client = None
         self.anthropic_client = None
         self.memory = AgentMemory()
         self.conversation_history = []
-        self.provider = None  # 'groq', 'anthropic', or None
+        self.provider = None  # 'claude_tmux', 'groq', 'anthropic', or None
 
-        # Try Groq first (free tier)
-        if HAS_GROQ and self.groq_key:
+        # Priority 1: Claude Code via tmux (uses subscription)
+        if self.use_tmux and HAS_CLAUDE_TMUX and claude_tmux:
+            if claude_tmux.start_session():
+                self.provider = 'claude_tmux'
+
+        # Priority 2: Groq (free tier)
+        if not self.provider and HAS_GROQ and self.groq_key:
             self.groq_client = Groq(api_key=self.groq_key)
             self.provider = 'groq'
-        # Fall back to Anthropic
-        elif HAS_ANTHROPIC and self.anthropic_key:
+
+        # Priority 3: Anthropic API
+        if not self.provider and HAS_ANTHROPIC and self.anthropic_key:
             self.anthropic_client = anthropic.Anthropic(api_key=self.anthropic_key)
             self.provider = 'anthropic'
 
     @property
     def is_intelligent(self) -> bool:
-        """Returns True if an LLM API is available."""
+        """Returns True if an LLM is available."""
         return self.provider is not None
 
     @property
     def provider_name(self) -> str:
         """Returns the name of the active provider."""
-        if self.provider == 'groq':
+        if self.provider == 'claude_tmux':
+            return 'Claude Code (Subscription)'
+        elif self.provider == 'groq':
             return 'Groq (Llama 3)'
         elif self.provider == 'anthropic':
-            return 'Claude'
+            return 'Claude API'
         return 'Fallback Mode'
 
     def get_market_data(self, symbols: List[str]) -> str:
@@ -337,7 +354,16 @@ Provide a helpful, intelligent response. Use the real data above when relevant. 
         try:
             agent_response = None
 
-            if self.provider == 'groq':
+            if self.provider == 'claude_tmux':
+                # Use Claude Code via tmux (subscription-based)
+                full_prompt = f"""{self.SYSTEM_PROMPT}
+
+{context_message}
+
+Respond helpfully and concisely."""
+                agent_response = claude_tmux.send_message(full_prompt, timeout=90)
+
+            elif self.provider == 'groq':
                 # Call Groq API (Llama 3)
                 chat_messages = [{"role": "system", "content": self.SYSTEM_PROMPT}]
                 chat_messages.extend(self.conversation_history[-15:])
