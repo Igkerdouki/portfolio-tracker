@@ -7,9 +7,10 @@ import { PerformanceChart } from './components/PerformanceChart';
 import { IBKRConnect } from './components/IBKRConnect';
 import { StockAnalysis } from './components/StockAnalysis';
 import { AgentDashboard } from './components/AgentDashboard';
+import { MLPredictor } from './components/MLPredictor';
 import { api } from './services/api';
 
-type TabType = 'portfolio' | 'analysis' | 'agents';
+type TabType = 'portfolio' | 'analysis' | 'ml' | 'agents';
 
 function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -86,17 +87,27 @@ function App() {
               AI Analysis
             </button>
             <button
-              onClick={() => setActiveTab('agents')}
+              onClick={() => setActiveTab('ml')}
               className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === 'ml'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              ML Predictor
+              <span className="bg-green-100 text-green-700 text-xs px-1.5 py-0.5 rounded">
+                NEW
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('agents')}
+              className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'agents'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
               Agents & Webhooks
-              <span className="bg-purple-100 text-purple-700 text-xs px-1.5 py-0.5 rounded">
-                NEW
-              </span>
             </button>
           </div>
         </div>
@@ -123,6 +134,10 @@ function App() {
 
         {activeTab === 'analysis' && (
           <StockAnalysis portfolioSymbols={portfolioSymbols} />
+        )}
+
+        {activeTab === 'ml' && (
+          <MLPredictor />
         )}
 
         {activeTab === 'agents' && (
