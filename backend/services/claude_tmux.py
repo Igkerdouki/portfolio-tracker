@@ -26,6 +26,7 @@ class ClaudeTmuxOrchestrator:
     SESSION_NAME = "lili_claude"
     RESPONSE_FILE = Path("/tmp/lili_claude_response.txt")
     READY_FILE = Path("/tmp/lili_claude_ready.txt")
+    TMUX_PATH = "/opt/homebrew/bin/tmux"  # Full path for subprocess
 
     def __init__(self):
         self.ready = False
@@ -53,7 +54,7 @@ class ClaudeTmuxOrchestrator:
 
     def is_session_running(self) -> bool:
         """Check if the tmux session exists."""
-        result = self._run_cmd(f"tmux has-session -t {self.SESSION_NAME} 2>/dev/null && echo 'yes' || echo 'no'")
+        result = self._run_cmd(f"{self.TMUX_PATH} has-session -t {self.SESSION_NAME} 2>/dev/null && echo 'yes' || echo 'no'")
         return result == "yes"
 
     def start_session(self) -> bool:
@@ -66,20 +67,32 @@ class ClaudeTmuxOrchestrator:
         print(f"[Lili] Starting Claude Code session: {self.SESSION_NAME}")
 
         # Create tmux session with Claude Code
-        cmd = f"tmux new-session -d -s {self.SESSION_NAME} 'claude --dangerously-skip-permissions'"
+        cmd = f"{self.TMUX_PATH} new-session -d -s {self.SESSION_NAME} 'claude --dangerously-skip-permissions'"
         self._run_cmd(cmd, capture=False)
 
-        # Wait for Claude to initialize
-        time.sleep(4)
+        # Wait for permission dialog to appear
+        time.sleep(3)
+
+        if not self.is_session_running():
+            print("[Lili] Failed to create tmux session")
+            return False
+
+        # Accept the bypass permissions dialog
+        # Navigate to "Yes, I accept" (option 2) and press Enter
+        print("[Lili] Accepting bypass permissions dialog...")
+        self._run_cmd(f"{self.TMUX_PATH} send-keys -t {self.SESSION_NAME} Down", capture=False)
+        time.sleep(0.3)
+        self._run_cmd(f"{self.TMUX_PATH} send-keys -t {self.SESSION_NAME} Enter", capture=False)
+
+        # Wait for Claude to fully initialize
+        time.sleep(5)
 
         if self.is_session_running():
-            # Send initial instruction to Claude
-            self._send_init_instructions()
             self.ready = True
             print(f"[Lili] Claude Code session ready")
             return True
 
-        print("[Lili] Failed to start Claude Code session")
+        print("[Lili] Session closed unexpectedly")
         return False
 
     def _send_init_instructions(self):
@@ -89,18 +102,27 @@ class ClaudeTmuxOrchestrator:
         self._send_keys(init_msg)
         time.sleep(5)  # Wait for Claude to process
 
-    def _send_keys(self, text: str):
+    def _send_keys(self, text: str, submit: bool = True):
         """Send text to the tmux session."""
-        # Escape special characters
-        # Replace newlines with Enter key presses
-        escaped = text.replace("'", "'\\''").replace('\n', "' Enter '")
-        cmd = f"tmux send-keys -t {self.SESSION_NAME} '{escaped}' Enter"
+        # For multiline text, we need to send it carefully
+        # First escape single quotes
+        escaped = text.replace("'", "'\\''")
+        # Replace newlines with spaces for single-line input
+        escaped = escaped.replace('\n', ' ')
+
+        # Send the text
+        cmd = f"{self.TMUX_PATH} send-keys -t {self.SESSION_NAME} -- '{escaped}'"
         self._run_cmd(cmd, capture=False)
+
+        # Submit with Enter if requested
+        if submit:
+            time.sleep(0.2)
+            self._run_cmd(f"{self.TMUX_PATH} send-keys -t {self.SESSION_NAME} Enter", capture=False)
 
     def stop_session(self):
         """Stop the tmux session."""
         if self.is_session_running():
-            self._run_cmd(f"tmux kill-session -t {self.SESSION_NAME}")
+            self._run_cmd(f"{self.TMUX_PATH} kill-session -t {self.SESSION_NAME}")
             self.ready = False
             self._cleanup_files()
             print(f"[Lili] Stopped session: {self.SESSION_NAME}")
@@ -164,7 +186,7 @@ class ClaudeTmuxOrchestrator:
     def _capture_from_pane(self) -> Optional[str]:
         """Fallback: capture response from tmux pane."""
         content = self._run_cmd(
-            f"tmux capture-pane -t {self.SESSION_NAME} -p -S -100"
+            f"{self.TMUX_PATH} capture-pane -t {self.SESSION_NAME} -p -S -100"
         )
 
         if not content:
