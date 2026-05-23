@@ -13,6 +13,7 @@ from agents import (
     AgentRole
 )
 from services.ibkr import ibkr_service
+from data.stock_lists import PRESET_LISTS, get_preset, get_all_presets
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -216,4 +217,65 @@ def get_agent_memory(agent_name: str):
         "learnings": agent.memory.learnings,
         "recent_mistakes": agent.memory.learnings.get("mistakes", [])[-10:],
         "patterns": agent.memory.learnings.get("patterns", [])[-10:],
+    }
+
+
+# ============================================================
+# PRESET STOCK LISTS
+# ============================================================
+
+@router.get("/presets")
+def list_presets():
+    """Get all available preset stock lists."""
+    return {"presets": get_all_presets()}
+
+
+@router.get("/presets/{preset_id}")
+def get_preset_symbols(preset_id: str):
+    """Get symbols for a specific preset."""
+    if preset_id not in PRESET_LISTS:
+        raise HTTPException(status_code=404, detail=f"Preset '{preset_id}' not found")
+
+    preset = PRESET_LISTS[preset_id]
+    return {
+        "preset_id": preset_id,
+        "name": preset["name"],
+        "description": preset["description"],
+        "count": preset["count"],
+        "symbols": preset["symbols"]
+    }
+
+
+@router.post("/scanner/watchlist/preset/{preset_id}")
+def load_preset_watchlist(preset_id: str, replace: bool = False):
+    """Load a preset stock list into the scanner watchlist.
+
+    Args:
+        preset_id: The preset to load (sp500_top100, nasdaq100, etc.)
+        replace: If True, replace current watchlist. If False, add to it.
+    """
+    system = get_system()
+
+    scanner = system.orchestrator.agents.get(AgentRole.SCANNER)
+    if not scanner:
+        raise HTTPException(status_code=404, detail="Scanner agent not found")
+
+    symbols = get_preset(preset_id)
+    if not symbols:
+        raise HTTPException(status_code=404, detail=f"Preset '{preset_id}' not found")
+
+    if replace:
+        scanner.watchlist = symbols
+    else:
+        scanner.watchlist.extend(symbols)
+        scanner.watchlist = list(set(scanner.watchlist))  # Remove duplicates
+
+    scanner.state["watchlist"] = scanner.watchlist
+    scanner.memory.save_state(scanner.state)
+
+    return {
+        "status": "success",
+        "preset_loaded": preset_id,
+        "watchlist_size": len(scanner.watchlist),
+        "watchlist": scanner.watchlist
     }

@@ -63,10 +63,19 @@ interface WebhookActivity {
   keys: string[];
 }
 
+interface Preset {
+  name: string;
+  description: string;
+  count: number;
+}
+
 export function AgentDashboard() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [webhookActivity, setWebhookActivity] = useState<WebhookActivity | null>(null);
+  const [presets, setPresets] = useState<Record<string, Preset>>({});
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
+  const [loadingPreset, setLoadingPreset] = useState(false);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [newSymbol, setNewSymbol] = useState('');
@@ -105,10 +114,37 @@ export function AgentDashboard() {
     }
   }, []);
 
+  const fetchPresets = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/agents/presets`);
+      const data = await res.json();
+      setPresets(data.presets || {});
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const loadPreset = async (presetId: string, replace: boolean = false) => {
+    if (!presetId) return;
+    setLoadingPreset(true);
+    try {
+      await fetch(`${API_BASE_URL}/agents/scanner/watchlist/preset/${presetId}?replace=${replace}`, {
+        method: 'POST',
+      });
+      await fetchStatus();
+      setSelectedPreset('');
+    } catch (err) {
+      setError('Failed to load preset');
+    } finally {
+      setLoadingPreset(false);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
     fetchSignals();
     fetchWebhookActivity();
+    fetchPresets();
 
     // Poll every 5 seconds
     const interval = setInterval(() => {
@@ -118,7 +154,7 @@ export function AgentDashboard() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchSignals, fetchWebhookActivity]);
+  }, [fetchStatus, fetchSignals, fetchWebhookActivity, fetchPresets]);
 
   const startAgents = async () => {
     setStarting(true);
@@ -311,9 +347,49 @@ export function AgentDashboard() {
             </div>
           </div>
 
+          {/* Preset Lists */}
+          <div className="border-t pt-4">
+            <p className="text-xs text-gray-500 mb-2">Load Market Index</p>
+            <div className="flex gap-2 mb-3">
+              <select
+                value={selectedPreset}
+                onChange={(e) => setSelectedPreset(e.target.value)}
+                className="flex-1 border rounded px-2 py-1 text-sm bg-white"
+              >
+                <option value="">Select preset...</option>
+                {Object.entries(presets).map(([key, preset]) => (
+                  <option key={key} value={key}>
+                    {preset.name} ({preset.count})
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => loadPreset(selectedPreset, false)}
+                disabled={!selectedPreset || loadingPreset}
+                className="bg-purple-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
+                title="Add to watchlist"
+              >
+                {loadingPreset ? '...' : '+'}
+              </button>
+              <button
+                onClick={() => loadPreset(selectedPreset, true)}
+                disabled={!selectedPreset || loadingPreset}
+                className="bg-orange-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
+                title="Replace watchlist"
+              >
+                =
+              </button>
+            </div>
+            {selectedPreset && presets[selectedPreset] && (
+              <p className="text-xs text-gray-400 mb-2">
+                {presets[selectedPreset].description}
+              </p>
+            )}
+          </div>
+
           {/* Watchlist Management */}
           <div className="border-t pt-4">
-            <p className="text-xs text-gray-500 mb-2">Watchlist</p>
+            <p className="text-xs text-gray-500 mb-2">Watchlist ({scanner?.watchlist_size || 0} symbols)</p>
             <div className="flex gap-2 mb-3">
               <input
                 type="text"
@@ -330,8 +406,8 @@ export function AgentDashboard() {
                 +
               </button>
             </div>
-            <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-              {scanner?.watchlist?.map((symbol) => (
+            <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+              {scanner?.watchlist?.slice(0, 50).map((symbol) => (
                 <span
                   key={symbol}
                   className="inline-flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded text-xs group"
@@ -345,6 +421,11 @@ export function AgentDashboard() {
                   </button>
                 </span>
               ))}
+              {(scanner?.watchlist?.length || 0) > 50 && (
+                <span className="text-xs text-gray-400">
+                  +{(scanner?.watchlist?.length || 0) - 50} more
+                </span>
+              )}
             </div>
           </div>
         </div>
