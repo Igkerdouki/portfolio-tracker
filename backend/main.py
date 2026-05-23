@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import engine, Base
-from routers import positions, portfolio, prices, transactions, ibkr, analysis, data, agents
+from routers import positions, portfolio, prices, transactions, ibkr, analysis, data, agents, webhooks
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -47,3 +47,4 @@ app.include_router(ibkr.router)
 app.include_router(analysis.router)
 app.include_router(data.router)
 app.include_router(agents.router)
+app.include_router(webhooks.router)
