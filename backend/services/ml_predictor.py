@@ -28,6 +28,7 @@ try:
     HAS_TENSORFLOW = True
 except ImportError:
     HAS_TENSORFLOW = False
+    Sequential = None  # Placeholder for type hints
 
 # Try importing yfinance
 try:
@@ -267,7 +268,7 @@ class LSTMPredictor:
             y_seq.append(y[i])
         return np.array(X_seq), np.array(y_seq)
 
-    def build_model(self, input_shape: Tuple[int, int]) -> Sequential:
+    def build_model(self, input_shape: Tuple[int, int]):
         """Build LSTM model architecture."""
         model = Sequential([
             LSTM(50, return_sequences=True, input_shape=input_shape),
@@ -526,11 +527,15 @@ class MLTradingSystem:
         if cache_key in self.data_cache:
             return self.data_cache[cache_key]
 
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period=period)
+        # Use yf.download (more reliable than Ticker.history)
+        df = yf.download(symbol, period=period, progress=False)
 
         if len(df) == 0:
             raise ValueError(f"No data found for {symbol}")
+
+        # Flatten multi-index columns if present
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
 
         # Add features
         df = self.feature_engineer.create_features(df)

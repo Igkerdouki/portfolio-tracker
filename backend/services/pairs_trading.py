@@ -105,26 +105,49 @@ class PairsTrader:
         if not HAS_YFINANCE:
             raise ImportError("yfinance not installed")
 
-        # Fetch data
-        ticker_x = yf.Ticker(self.symbol_x)
-        ticker_y = yf.Ticker(self.symbol_y)
+        # Fetch data for each symbol separately (more reliable)
+        df_x = yf.download(self.symbol_x, period=period, progress=False)
+        df_y = yf.download(self.symbol_y, period=period, progress=False)
 
-        df_x = ticker_x.history(period=period)
-        df_y = ticker_y.history(period=period)
+        if len(df_x) == 0:
+            raise ValueError(f"No data found for {self.symbol_x}")
+        if len(df_y) == 0:
+            raise ValueError(f"No data found for {self.symbol_y}")
 
-        # Align dates
-        df = pd.DataFrame({
-            f'{self.symbol_x}_Open': df_x['Open'],
-            f'{self.symbol_x}_High': df_x['High'],
-            f'{self.symbol_x}_Low': df_x['Low'],
-            f'{self.symbol_x}_Close': df_x['Close'],
-            f'{self.symbol_x}_Volume': df_x['Volume'],
-            f'{self.symbol_y}_Open': df_y['Open'],
-            f'{self.symbol_y}_High': df_y['High'],
-            f'{self.symbol_y}_Low': df_y['Low'],
-            f'{self.symbol_y}_Close': df_y['Close'],
-            f'{self.symbol_y}_Volume': df_y['Volume'],
-        }).dropna()
+        # Handle multi-index columns from yfinance
+        def flatten_columns(df, symbol):
+            """Flatten multi-index columns to simple column names."""
+            if isinstance(df.columns, pd.MultiIndex):
+                # yfinance returns (Price, Ticker) format
+                new_cols = {}
+                for col in df.columns:
+                    price_name = col[0]  # e.g., 'Close', 'High', etc.
+                    new_cols[col] = price_name
+                df = df.rename(columns=new_cols)
+            return df
+
+        df_x = flatten_columns(df_x, self.symbol_x)
+        df_y = flatten_columns(df_y, self.symbol_y)
+
+        # Get common dates
+        common_dates = df_x.index.intersection(df_y.index)
+
+        if len(common_dates) == 0:
+            raise ValueError(f"No overlapping data for {self.symbol_x} and {self.symbol_y}")
+
+        # Create combined dataframe
+        df = pd.DataFrame(index=common_dates)
+
+        for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
+            if col in df_x.columns:
+                df[f'{self.symbol_x}_{col}'] = df_x.loc[common_dates, col].values
+            if col in df_y.columns:
+                df[f'{self.symbol_y}_{col}'] = df_y.loc[common_dates, col].values
+
+        df = df.dropna()
+
+        if len(df) == 0:
+            raise ValueError(f"No valid data after merging {self.symbol_x} and {self.symbol_y}")
 
         self.data = df
         return df
@@ -188,9 +211,6 @@ class PairsTrader:
         df['position_size'] = df['position_size'].clip(lower=0.1, upper=10)  # Limits
 
         # Generate signals
-        df['signal'] = 0
-        df['position'] = 0.0
-
         position = 0
         entry_price_x = 0
         entry_price_y = 0
@@ -252,7 +272,12 @@ class PairsTrader:
             self.generate_signals()
 
         df = self.signals.copy()
-        df = df.dropna()
+
+        # Drop rows with NaN in z_score (which has the lookback period NaN)
+        df = df.dropna(subset=['z_score'])
+
+        if len(df) < 10:
+            return {"error": f"Not enough data after filtering. Got {len(df)} rows."}
 
         x_close = df[f'{self.symbol_x}_Close']
         y_close = df[f'{self.symbol_y}_Close']
@@ -272,12 +297,16 @@ class PairsTrader:
         # Remove NaN
         strategy_return = strategy_return.dropna()
 
+        if len(strategy_return) < 10:
+            return {"error": "Not enough valid returns to calculate metrics"}
+
         # Equity curve
         equity = initial_capital * (1 + strategy_return).cumprod()
 
         # Calculate metrics
         total_return = (equity.iloc[-1] / initial_capital - 1) * 100
-        annual_return = ((equity.iloc[-1] / initial_capital) ** (252 / len(equity)) - 1) * 100
+        n_days = len(equity)
+        annual_return = ((equity.iloc[-1] / initial_capital) ** (252 / max(n_days, 1)) - 1) * 100
         sharpe = np.sqrt(252) * strategy_return.mean() / strategy_return.std() if strategy_return.std() > 0 else 0
 
         # Max drawdown

@@ -8,9 +8,10 @@ import { IBKRConnect } from './components/IBKRConnect';
 import { StockAnalysis } from './components/StockAnalysis';
 import { AgentDashboard } from './components/AgentDashboard';
 import { MLPredictor } from './components/MLPredictor';
+import { ChatInterface } from './components/ChatInterface';
 import { api } from './services/api';
 
-type TabType = 'portfolio' | 'analysis' | 'ml' | 'agents';
+type TabType = 'portfolio' | 'analysis' | 'ml' | 'chat' | 'agents';
 
 function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -95,7 +96,17 @@ function App() {
               }`}
             >
               ML Predictor
-              <span className="bg-green-100 text-green-700 text-xs px-1.5 py-0.5 rounded">
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === 'chat'
+                  ? 'border-purple-600 text-purple-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              AI Chat
+              <span className="bg-purple-100 text-purple-700 text-xs px-1.5 py-0.5 rounded">
                 NEW
               </span>
             </button>
@@ -138,6 +149,10 @@ function App() {
 
         {activeTab === 'ml' && (
           <MLPredictor />
+        )}
+
+        {activeTab === 'chat' && (
+          <ChatInterface />
         )}
 
         {activeTab === 'agents' && (

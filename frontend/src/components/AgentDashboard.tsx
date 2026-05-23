@@ -69,6 +69,16 @@ interface Preset {
   count: number;
 }
 
+interface AgentMessage {
+  id: string;
+  sender: string;
+  recipient: string;
+  msg_type: string;
+  payload: Record<string, unknown>;
+  timestamp: string;
+  priority: number;
+}
+
 export function AgentDashboard() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -80,6 +90,9 @@ export function AgentDashboard() {
   const [starting, setStarting] = useState(false);
   const [newSymbol, setNewSymbol] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [showMessages, setShowMessages] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -124,6 +137,60 @@ export function AgentDashboard() {
     }
   }, []);
 
+  const fetchMessages = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/agents/messages?limit=50`);
+      const data = await res.json();
+      setMessages(data.messages || []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const sendChatCommand = async (command: string) => {
+    if (!command.trim()) return;
+
+    // Parse command - format: "scan AAPL" or "add TSLA" or "status"
+    const parts = command.trim().toLowerCase().split(' ');
+    const action = parts[0];
+    const symbol = parts[1]?.toUpperCase();
+
+    try {
+      if (action === 'scan' || action === 'scan-now') {
+        await fetch(`${API_BASE_URL}/agents/scanner/scan-now`, { method: 'POST' });
+        setTimeout(fetchSignals, 2000);
+      } else if (action === 'add' && symbol) {
+        await fetch(`${API_BASE_URL}/agents/scanner/watchlist`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols: [symbol], action: 'add' }),
+        });
+        await fetchStatus();
+      } else if (action === 'remove' && symbol) {
+        await fetch(`${API_BASE_URL}/agents/scanner/watchlist`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols: [symbol], action: 'remove' }),
+        });
+        await fetchStatus();
+      } else if (action === 'start') {
+        await startAgents();
+      } else if (action === 'stop') {
+        await stopAgents();
+      } else if (action === 'status') {
+        await fetchStatus();
+        await fetchMessages();
+      } else if (action === 'clear') {
+        setMessages([]);
+      } else if (action === 'help') {
+        alert('Commands:\\n- scan: Trigger market scan\\n- add SYMBOL: Add to watchlist\\n- remove SYMBOL: Remove from watchlist\\n- start: Start agents\\n- stop: Stop agents\\n- status: Refresh status\\n- clear: Clear messages');
+      }
+      setChatInput('');
+    } catch (err) {
+      setError('Command failed');
+    }
+  };
+
   const loadPreset = async (presetId: string, replace: boolean = false) => {
     if (!presetId) return;
     setLoadingPreset(true);
@@ -145,16 +212,18 @@ export function AgentDashboard() {
     fetchSignals();
     fetchWebhookActivity();
     fetchPresets();
+    fetchMessages();
 
     // Poll every 5 seconds
     const interval = setInterval(() => {
       fetchStatus();
       fetchSignals();
       fetchWebhookActivity();
+      fetchMessages();
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchSignals, fetchWebhookActivity, fetchPresets]);
+  }, [fetchStatus, fetchSignals, fetchWebhookActivity, fetchPresets, fetchMessages]);
 
   const startAgents = async () => {
     setStarting(true);
@@ -628,6 +697,99 @@ export function AgentDashboard() {
             </pre>
           </div>
         </div>
+      </div>
+
+      {/* Agent Messages & Chat */}
+      <div className="bg-white rounded-xl shadow p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900">Agent Console</h3>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowMessages(!showMessages)}
+              className="text-blue-600 hover:text-blue-800 text-sm"
+            >
+              {showMessages ? 'Hide Messages' : 'Show Messages'}
+            </button>
+            <button
+              onClick={fetchMessages}
+              className="text-gray-500 hover:text-gray-700 text-sm"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {/* Chat Input */}
+        <div className="flex gap-2 mb-4">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendChatCommand(chatInput)}
+            placeholder="Type command (scan, add AAPL, remove TSLA, help)..."
+            className="flex-1 border rounded-lg px-3 py-2 text-sm"
+          />
+          <button
+            onClick={() => sendChatCommand(chatInput)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700"
+          >
+            Send
+          </button>
+        </div>
+
+        {/* Quick Commands */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => sendChatCommand('scan')}
+            className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs hover:bg-green-200"
+          >
+            Scan Now
+          </button>
+          <button
+            onClick={() => sendChatCommand('status')}
+            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs hover:bg-blue-200"
+          >
+            Refresh Status
+          </button>
+          <button
+            onClick={() => sendChatCommand('help')}
+            className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs hover:bg-gray-200"
+          >
+            Help
+          </button>
+        </div>
+
+        {/* Messages Log */}
+        {showMessages && (
+          <div className="border rounded-lg bg-gray-900 p-3 max-h-64 overflow-y-auto font-mono text-xs">
+            {messages.length === 0 ? (
+              <p className="text-gray-500">No messages yet. Start the agents to see inter-agent communication.</p>
+            ) : (
+              messages.slice().reverse().map((msg, idx) => (
+                <div key={idx} className="mb-2 pb-2 border-b border-gray-700 last:border-0">
+                  <div className="flex justify-between text-gray-400">
+                    <span>
+                      <span className="text-cyan-400">{msg.sender}</span>
+                      {' → '}
+                      <span className="text-yellow-400">{msg.recipient}</span>
+                    </span>
+                    <span className="text-gray-600">{msg.timestamp?.split('T')[1]?.split('.')[0] || ''}</span>
+                  </div>
+                  <div className="text-green-400">
+                    [{msg.msg_type}] {msg.payload ? JSON.stringify(msg.payload).slice(0, 100) : ''}
+                    {JSON.stringify(msg.payload || {}).length > 100 && '...'}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {!showMessages && messages.length > 0 && (
+          <p className="text-xs text-gray-500">
+            {messages.length} messages logged. Click "Show Messages" to view.
+          </p>
+        )}
       </div>
     </div>
   );
