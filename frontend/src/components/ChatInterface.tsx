@@ -18,22 +18,24 @@ export function ChatInterface() {
   useEffect(() => {
     setMessages([{
       role: 'assistant',
-      content: `Hey there! I'm your AI investment advisor.
+      content: `Hey! I'm Lili, your personal investment advisor.
 
-I help you understand investing and make smarter decisions - whether you're a beginner or experienced.
+I'm here to help you navigate the markets and make smarter financial decisions - whether you're just starting out or already experienced.
 
 **What I can help with:**
-- Analyze any stock
-- Explain investing terms simply
-- Discuss strategies and timing
-- Help you think through decisions
+- Deep analysis of any stock or ETF
+- Explain complex finance concepts simply
+- Discuss investment strategies and timing
+- Help you think through your portfolio decisions
+- Compare different investment options
 
-**Try asking:**
-- "Tell me about Tesla"
-- "What does P/E ratio mean?"
-- "Should I invest in Apple long term?"
+**Try asking me:**
+- "What do you think about Tesla?"
+- "Explain P/E ratio like I'm 5"
+- "Should I invest in Apple for the long term?"
+- "What's happening in the market today?"
 
-What's on your mind?`,
+So, what's on your mind?`,
       timestamp: new Date().toISOString()
     }]);
   }, []);
@@ -117,8 +119,8 @@ What's on your mind?`,
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[500px]">
       {/* Header */}
       <div className="p-5 border-b border-slate-700/50" style={{ backgroundColor: '#1a1f4e' }}>
-        <h2 className="text-lg font-bold" style={{ color: '#f59e0b' }}>AI Advisor</h2>
-        <p className="text-sm" style={{ color: '#94a3b8' }}>Ask anything about stocks and investing</p>
+        <h2 className="text-lg font-bold" style={{ color: '#f59e0b' }}>Lili</h2>
+        <p className="text-sm" style={{ color: '#94a3b8' }}>Your intelligent investment advisor</p>
       </div>
 
       {/* Messages */}
@@ -138,7 +140,7 @@ What's on your mind?`,
             >
               {msg.role === 'assistant' && (
                 <div className="flex items-center gap-2 mb-2 pb-2 border-b" style={{ borderColor: '#2a3158' }}>
-                  <span className="text-sm font-medium" style={{ color: '#f59e0b' }}>AI Advisor</span>
+                  <span className="text-sm font-medium" style={{ color: '#f59e0b' }}>Lili</span>
                   {msg.hasData && (
                     <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#22c55e20', color: '#22c55e' }}>
                       Live Data
