@@ -29,12 +29,33 @@ class ChatResponse(BaseModel):
 @router.get("/status")
 async def get_chat_status():
     """Get AI agent status - which provider is active."""
+    from services.claude_tmux import claude_tmux
+
+    tmux_status = claude_tmux.get_status() if claude_tmux else {}
+
     return {
         "is_intelligent": intelligent_agent.is_intelligent,
         "provider": intelligent_agent.provider_name,
         "provider_id": intelligent_agent.provider,
-        "message": "Groq (free) or Anthropic API key required for intelligent responses" if not intelligent_agent.is_intelligent else f"Using {intelligent_agent.provider_name}"
+        "tmux_session": tmux_status,
+        "message": "Set USE_CLAUDE_TMUX=1 or GROQ_API_KEY for intelligent responses" if not intelligent_agent.is_intelligent else f"Using {intelligent_agent.provider_name}"
     }
+
+
+@router.post("/tmux/start")
+async def start_tmux_session():
+    """Start Claude Code tmux session."""
+    from services.claude_tmux import claude_tmux
+    success = claude_tmux.start_session()
+    return {"success": success, "status": claude_tmux.get_status()}
+
+
+@router.post("/tmux/stop")
+async def stop_tmux_session():
+    """Stop Claude Code tmux session."""
+    from services.claude_tmux import claude_tmux
+    claude_tmux.stop_session()
+    return {"success": True, "status": claude_tmux.get_status()}
 
 
 @router.post("/message")

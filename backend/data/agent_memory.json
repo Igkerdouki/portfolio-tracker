@@ -1,0 +1,33 @@
+{
+  "conversations": [
+    {
+      "timestamp": "2026-05-23T01:31:20.374329",
+      "user": "HI ",
+      "agent": "I can help with that! To give you the best advice, tell me more:\n\n1. **What options** are you comparing?\n2. **Your timeline** - when do you need the money?\n3. **Risk tolerance** - how would you feel if it dropped 20%?\n4. **Specific stocks** - mention any tickers and I'll pull real data\n\n**Things I can analyze:**\n- Any stock (just mention ticker like AAPL, TSLA)\n- Compare treasury bonds vs stocks vs ETFs\n- Explain any investment concept\n- Discuss portfolio strategies\n\nJust ask naturally - I'm her"
+    },
+    {
+      "timestamp": "2026-05-23T08:03:40.210851",
+      "user": "hi",
+      "agent": "I can help with that! To give you the best advice, tell me more:\n\n1. **What options** are you comparing?\n2. **Your timeline** - when do you need the money?\n3. **Risk tolerance** - how would you feel if it dropped 20%?\n4. **Specific stocks** - mention any tickers and I'll pull real data\n\n**Things I can analyze:**\n- Any stock (just mention ticker like AAPL, TSLA)\n- Compare treasury bonds vs stocks vs ETFs\n- Explain any investment concept\n- Discuss portfolio strategies\n\nJust ask naturally - I'm her"
+    },
+    {
+      "timestamp": "2026-05-23T08:04:13.699402",
+      "user": "Deep analysis of any stock or ETF",
+      "agent": "Here's what I found:\n\n\n**OR (OR Royalties Inc.)**\n- Price: $35.60 (+0.08% today)\n- 1 Week: -1.6% | 1 Month: -11.8% | YTD: +6.0%\n- Volatility: 51.2% annualized\n- RSI(14): 48 \n- vs 50-day MA: -6.4% | vs 200-day MA: +0.0%\n- P/E: 26.567162 | Market Cap: $6.7B\n- 52-Week Range: $24.76 - $48.06\n- Sector: Basic Materials\n\n\n**ANY (Sphere 3D Corp.)**\n- Price: $1.89 (-2.07% today)\n- 1 Week: +12.5% | 1 Month: +30.3% | YTD: -59.3%\n- Volatility: 107.5% annualized\n- RSI(14): 58 \n- vs 50-day MA: +18.3% | vs 200"
+    },
+    {
+      "timestamp": "2026-05-23T08:23:22.839757",
+      "user": "hi",
+      "agent": "I can help with that! To give you the best advice, tell me more:\n\n1. **What options** are you comparing?\n2. **Your timeline** - when do you need the money?\n3. **Risk tolerance** - how would you feel if it dropped 20%?\n4. **Specific stocks** - mention any tickers and I'll pull real data\n\n**Things I can analyze:**\n- Any stock (just mention ticker like AAPL, TSLA)\n- Compare treasury bonds vs stocks vs ETFs\n- Explain any investment concept\n- Discuss portfolio strategies\n\nJust ask naturally - I'm her"
+    },
+    {
+      "timestamp": "2026-05-23T08:23:54.416790",
+      "user": "what AI model are you?",
+      "agent": "Here's what I found:\n\n\n**ARE (Alexandria Real Estate Equities)**\n- Price: $48.37 (+1.09% today)\n- 1 Week: +3.6% | 1 Month: +2.0% | YTD: -2.7%\n- Volatility: 44.1% annualized\n- RSI(14): 75 (overbought)\n- vs 50-day MA: +5.8% | vs 200-day MA: +0.0%\n- P/E: N/A | Market Cap: $8.4B\n- 52-Week Range: $39.41 - $88.24\n- Sector: Real Estate\n\n\n**YOU (Clear Secure, Inc.)**\n- Price: $60.06 (-1.70% today)\n- 1 Week: +1.5% | 1 Month: +9.6% | YTD: +69.6%\n- Volatility: 74.5% annualized\n- RSI(14): 59 \n- vs 50-day MA"
+    }
+  ],
+  "user_preferences": {},
+  "learned_corrections": [],
+  "frequently_asked": {},
+  "user_portfolio_context": {}
+}

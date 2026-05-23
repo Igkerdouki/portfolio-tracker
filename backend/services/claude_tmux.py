@@ -1,37 +1,52 @@
 """
 Claude Code Tmux Orchestrator
 Uses Claude Code subscription via tmux instead of API rates.
+
+Approach:
+1. Claude Code runs in a tmux session
+2. We send messages via tmux send-keys
+3. Claude writes responses to a file
+4. We read the response from the file
 """
 
 import subprocess
 import time
 import os
-import re
-from typing import Optional
 from pathlib import Path
+from typing import Optional
+from datetime import datetime
 
 
 class ClaudeTmuxOrchestrator:
     """
     Orchestrate Claude Code running in a tmux session.
-    This uses your Claude Code subscription instead of API rates.
+    Uses your Claude Code subscription instead of API rates.
     """
 
-    SESSION_NAME = "claude_lili"
-    OUTPUT_FILE = "/tmp/claude_lili_output.txt"
-    MARKER_START = "<<<LILI_RESPONSE_START>>>"
-    MARKER_END = "<<<LILI_RESPONSE_END>>>"
+    SESSION_NAME = "lili_claude"
+    RESPONSE_FILE = Path("/tmp/lili_claude_response.txt")
+    READY_FILE = Path("/tmp/lili_claude_ready.txt")
 
     def __init__(self):
         self.ready = False
+        # Clean up old files
+        self._cleanup_files()
 
-    def _run_cmd(self, cmd: str, capture=True) -> Optional[str]:
+    def _cleanup_files(self):
+        """Remove old response files."""
+        for f in [self.RESPONSE_FILE, self.READY_FILE]:
+            if f.exists():
+                f.unlink()
+
+    def _run_cmd(self, cmd: str, capture=True, timeout=30) -> Optional[str]:
         """Run a shell command."""
         try:
             result = subprocess.run(
-                cmd, shell=True, capture_output=capture, text=True, timeout=30
+                cmd, shell=True, capture_output=capture, text=True, timeout=timeout
             )
             return result.stdout.strip() if capture else None
+        except subprocess.TimeoutExpired:
+            return None
         except Exception as e:
             print(f"Command error: {e}")
             return None
@@ -44,130 +59,141 @@ class ClaudeTmuxOrchestrator:
     def start_session(self) -> bool:
         """Start Claude Code in a tmux session."""
         if self.is_session_running():
-            print(f"Session {self.SESSION_NAME} already running")
+            print(f"[Lili] Session {self.SESSION_NAME} already running")
             self.ready = True
             return True
 
-        # Create new tmux session with Claude Code
-        # Using -d to start detached
+        print(f"[Lili] Starting Claude Code session: {self.SESSION_NAME}")
+
+        # Create tmux session with Claude Code
         cmd = f"tmux new-session -d -s {self.SESSION_NAME} 'claude --dangerously-skip-permissions'"
         self._run_cmd(cmd, capture=False)
 
         # Wait for Claude to initialize
-        time.sleep(3)
+        time.sleep(4)
 
         if self.is_session_running():
-            print(f"Started Claude Code session: {self.SESSION_NAME}")
+            # Send initial instruction to Claude
+            self._send_init_instructions()
             self.ready = True
+            print(f"[Lili] Claude Code session ready")
             return True
 
-        print("Failed to start Claude Code session")
+        print("[Lili] Failed to start Claude Code session")
         return False
+
+    def _send_init_instructions(self):
+        """Send initial instructions to Claude about how to respond."""
+        init_msg = """From now on, when I ask you questions, please write your complete response to the file /tmp/lili_claude_response.txt using the Write tool. After writing, create an empty file at /tmp/lili_claude_ready.txt to signal you're done. Keep responses concise but helpful. Acknowledge with 'Ready'."""
+
+        self._send_keys(init_msg)
+        time.sleep(5)  # Wait for Claude to process
+
+    def _send_keys(self, text: str):
+        """Send text to the tmux session."""
+        # Escape special characters
+        # Replace newlines with Enter key presses
+        escaped = text.replace("'", "'\\''").replace('\n', "' Enter '")
+        cmd = f"tmux send-keys -t {self.SESSION_NAME} '{escaped}' Enter"
+        self._run_cmd(cmd, capture=False)
 
     def stop_session(self):
         """Stop the tmux session."""
         if self.is_session_running():
             self._run_cmd(f"tmux kill-session -t {self.SESSION_NAME}")
             self.ready = False
-            print(f"Stopped session: {self.SESSION_NAME}")
+            self._cleanup_files()
+            print(f"[Lili] Stopped session: {self.SESSION_NAME}")
 
-    def send_message(self, message: str, timeout: int = 60) -> Optional[str]:
-        """
-        Send a message to Claude Code and get the response.
-        """
+    def send_message(self, message: str, timeout: int = 90) -> Optional[str]:
+        """Send a message to Claude Code and get the response."""
         if not self.is_session_running():
             if not self.start_session():
-                return None
+                return "Sorry, I couldn't start the AI session. Please try again."
 
-        # Clear any previous output
-        self._run_cmd(f"tmux send-keys -t {self.SESSION_NAME} C-c")
-        time.sleep(0.5)
+        # Clean up previous response
+        self._cleanup_files()
 
-        # Wrap message with markers for extraction
-        wrapped_message = f"""Please respond to this user question. Start your response with exactly "{self.MARKER_START}" and end with exactly "{self.MARKER_END}":
+        # Send the message with instructions to write response to file
+        prompt = f"""Please answer this question and write your COMPLETE response to /tmp/lili_claude_response.txt, then touch /tmp/lili_claude_ready.txt when done:
 
 {message}"""
 
-        # Escape special characters for tmux
-        escaped_msg = wrapped_message.replace("'", "'\\''")
+        self._send_keys(prompt)
 
-        # Send the message
-        # Using tmux send-keys with the message
-        self._run_cmd(f"tmux send-keys -t {self.SESSION_NAME} '{escaped_msg}' Enter")
-
-        # Wait for response and capture
+        # Wait for response
         response = self._wait_for_response(timeout)
 
-        return response
+        if response:
+            return response
+
+        # Fallback: try to capture from pane
+        return self._capture_from_pane()
 
     def _wait_for_response(self, timeout: int) -> Optional[str]:
-        """Wait for Claude to respond and capture the output."""
+        """Wait for Claude to write response to file."""
         start_time = time.time()
-        last_content = ""
-        stable_count = 0
 
         while time.time() - start_time < timeout:
-            # Capture pane content
-            content = self._run_cmd(
-                f"tmux capture-pane -t {self.SESSION_NAME} -p -S -500"
-            )
-
-            if content:
-                # Check if response is complete (content stopped changing)
-                if content == last_content:
-                    stable_count += 1
-                    if stable_count >= 3:  # Content stable for 3 checks
-                        # Try to extract response between markers
-                        response = self._extract_response(content)
+            # Check if ready signal exists
+            if self.READY_FILE.exists():
+                # Read the response
+                if self.RESPONSE_FILE.exists():
+                    try:
+                        response = self.RESPONSE_FILE.read_text().strip()
                         if response:
                             return response
-                        # If no markers, return the last portion
-                        return self._extract_last_response(content)
-                else:
-                    stable_count = 0
-                    last_content = content
+                    except:
+                        pass
+
+            # Also check if response file has content (in case ready file wasn't created)
+            if self.RESPONSE_FILE.exists():
+                try:
+                    content = self.RESPONSE_FILE.read_text().strip()
+                    if content and len(content) > 50:  # Substantial response
+                        # Wait a bit more to ensure it's complete
+                        time.sleep(2)
+                        return self.RESPONSE_FILE.read_text().strip()
+                except:
+                    pass
 
             time.sleep(1)
 
         return None
 
-    def _extract_response(self, content: str) -> Optional[str]:
-        """Extract response between markers."""
-        if self.MARKER_START in content and self.MARKER_END in content:
-            start = content.find(self.MARKER_START) + len(self.MARKER_START)
-            end = content.find(self.MARKER_END)
-            if start < end:
-                return content[start:end].strip()
-        return None
+    def _capture_from_pane(self) -> Optional[str]:
+        """Fallback: capture response from tmux pane."""
+        content = self._run_cmd(
+            f"tmux capture-pane -t {self.SESSION_NAME} -p -S -100"
+        )
 
-    def _extract_last_response(self, content: str) -> str:
-        """Extract the last response from pane content."""
-        # Split by common Claude response patterns
+        if not content:
+            return None
+
+        # Try to extract the last response
         lines = content.split('\n')
-
-        # Find the last substantial block of text
-        # Skip empty lines and prompts
         response_lines = []
-        in_response = False
+        capture = False
 
-        for line in reversed(lines):
+        for line in lines:
+            # Skip empty lines and prompts
             stripped = line.strip()
-
-            # Skip empty lines at the end
-            if not stripped and not response_lines:
+            if not stripped:
                 continue
-
-            # Stop at user input indicators
             if stripped.startswith('❯') or stripped.startswith('>'):
-                break
+                capture = False
+                continue
+            if 'Please answer' in line or 'write your COMPLETE' in line:
+                capture = True
+                response_lines = []
+                continue
+            if capture:
+                response_lines.append(line)
 
-            response_lines.insert(0, line)
+        if response_lines:
+            return '\n'.join(response_lines[-30:])  # Last 30 lines
 
-            # Stop if we have enough content
-            if len(response_lines) > 50:
-                break
-
-        return '\n'.join(response_lines).strip()
+        return "I processed your request but couldn't capture the response. Please try again."
 
     def get_status(self) -> dict:
         """Get orchestrator status."""
@@ -175,8 +201,9 @@ class ClaudeTmuxOrchestrator:
         return {
             "session_name": self.SESSION_NAME,
             "running": running,
-            "ready": running,
-            "provider": "Claude Code (Subscription)"
+            "ready": self.ready and running,
+            "provider": "Claude Code (Subscription)",
+            "response_file": str(self.RESPONSE_FILE)
         }
 
 
@@ -184,12 +211,15 @@ class ClaudeTmuxOrchestrator:
 claude_tmux = ClaudeTmuxOrchestrator()
 
 
-# Quick test
 if __name__ == "__main__":
     print("Testing Claude Tmux Orchestrator...")
     print(f"Status: {claude_tmux.get_status()}")
 
     if claude_tmux.start_session():
-        print("Session started!")
-        response = claude_tmux.send_message("What is 2+2? Answer briefly.")
-        print(f"Response: {response}")
+        print("\nSending test message...")
+        response = claude_tmux.send_message("What is 2+2? Answer in one sentence.")
+        print(f"\nResponse: {response}")
+
+        print("\nSending finance question...")
+        response = claude_tmux.send_message("What's a good P/E ratio for growth stocks?")
+        print(f"\nResponse: {response}")
