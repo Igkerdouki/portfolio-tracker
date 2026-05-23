@@ -15,7 +15,7 @@ type TabType = 'portfolio' | 'analysis' | 'ml' | 'chat' | 'agents';
 
 const tabs: { id: TabType; label: string; icon: string; badge?: string }[] = [
   { id: 'portfolio', label: 'Portfolio', icon: '📊' },
-  { id: 'chat', label: 'AI Advisor', icon: '💬', badge: 'NEW' },
+  { id: 'chat', label: 'Lili Claude', icon: '💬', badge: 'NEW' },
   { id: 'analysis', label: 'Analysis', icon: '📈' },
   { id: 'ml', label: 'ML Predictor', icon: '🤖' },
   { id: 'agents', label: 'Automation', icon: '⚡' },
