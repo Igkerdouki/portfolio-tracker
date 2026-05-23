@@ -15,7 +15,7 @@ type TabType = 'portfolio' | 'analysis' | 'ml' | 'chat' | 'agents';
 
 const tabs: { id: TabType; label: string; icon: string; badge?: string }[] = [
   { id: 'portfolio', label: 'Portfolio', icon: '📊' },
-  { id: 'chat', label: 'AI Advisor', icon: '🧠', badge: 'NEW' },
+  { id: 'chat', label: 'AI Advisor', icon: '💬', badge: 'NEW' },
   { id: 'analysis', label: 'Analysis', icon: '📈' },
   { id: 'ml', label: 'ML Predictor', icon: '🤖' },
   { id: 'agents', label: 'Automation', icon: '⚡' },
@@ -52,35 +52,36 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen" style={{ backgroundColor: '#0a0e27' }}>
       {/* Header */}
-      <header className="bg-black/30 backdrop-blur-xl border-b border-white/10 sticky top-0 z-50">
+      <header className="border-b border-slate-700/50 sticky top-0 z-50" style={{ backgroundColor: '#0d1230' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center text-xl shadow-lg shadow-purple-500/30">
-                🏛️
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: '#1a1f4e' }}>
+                <span style={{ color: '#f59e0b' }}>📈</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-                  Yiayia's Alpha
+                <h1 className="text-xl font-bold" style={{ color: '#f59e0b' }}>
+                  Portfolio Tracker
                 </h1>
-                <p className="text-xs text-gray-400">Investment Intelligence</p>
+                <p className="text-xs text-slate-400">Smart Investment Tools</p>
               </div>
             </div>
 
             {/* Status */}
             <div className="flex items-center gap-4">
-              <div className="hidden sm:flex items-center gap-2 text-sm text-gray-400">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <div className="hidden sm:flex items-center gap-2 text-sm text-slate-400">
+                <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#22c55e' }}></div>
                 <span>Live</span>
-                <span className="text-gray-600">•</span>
+                <span className="text-slate-600">•</span>
                 <span>{lastUpdate.toLocaleTimeString()}</span>
               </div>
               <button
                 onClick={handleRefresh}
-                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all hover:scale-105"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:scale-105"
+                style={{ backgroundColor: '#1a1f4e', color: '#f59e0b' }}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -91,25 +92,31 @@ function App() {
           </div>
 
           {/* Navigation Tabs */}
-          <nav className="mt-4 flex gap-1 overflow-x-auto pb-1">
+          <nav className="mt-4 flex gap-2 overflow-x-auto pb-1">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                   activeTab === tab.id
-                    ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-lg shadow-purple-500/30'
-                    : 'text-gray-400 hover:text-white hover:bg-white/10'
+                    ? 'text-white shadow-lg'
+                    : 'text-slate-400 hover:text-white'
                 }`}
+                style={{
+                  backgroundColor: activeTab === tab.id ? '#1a1f4e' : 'transparent',
+                  borderLeft: activeTab === tab.id ? '3px solid #f59e0b' : '3px solid transparent'
+                }}
               >
                 <span>{tab.icon}</span>
                 <span>{tab.label}</span>
                 {tab.badge && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                    activeTab === tab.id
-                      ? 'bg-white/20 text-white'
-                      : 'bg-purple-500/20 text-purple-300'
-                  }`}>
+                  <span
+                    className="text-xs px-1.5 py-0.5 rounded-full"
+                    style={{
+                      backgroundColor: activeTab === tab.id ? '#f59e0b' : '#1a1f4e',
+                      color: activeTab === tab.id ? '#0a0e27' : '#f59e0b'
+                    }}
+                  >
                     {tab.badge}
                   </span>
                 )}
@@ -121,22 +128,21 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Portfolio Tab */}
         {activeTab === 'portfolio' && (
           <div className="space-y-6">
             <IBKRConnect onSync={handleRefresh} />
             <Dashboard refreshTrigger={refreshTrigger} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+              <div className="rounded-xl p-6 border border-slate-700/50" style={{ backgroundColor: '#0d1230' }}>
                 <AllocationChart refreshTrigger={refreshTrigger} />
               </div>
-              <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+              <div className="rounded-xl p-6 border border-slate-700/50" style={{ backgroundColor: '#0d1230' }}>
                 <PerformanceChart refreshTrigger={refreshTrigger} />
               </div>
             </div>
 
-            <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+            <div className="rounded-xl p-6 border border-slate-700/50" style={{ backgroundColor: '#0d1230' }}>
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-semibold text-white">Your Holdings</h2>
                 <AddPositionForm onSuccess={handleRefresh} />
@@ -146,56 +152,37 @@ function App() {
           </div>
         )}
 
-        {/* AI Chat Tab */}
         {activeTab === 'chat' && (
-          <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden">
+          <div className="rounded-xl border border-slate-700/50 overflow-hidden" style={{ backgroundColor: '#0d1230' }}>
             <ChatInterface />
           </div>
         )}
 
-        {/* Analysis Tab */}
         {activeTab === 'analysis' && (
-          <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+          <div className="rounded-xl p-6 border border-slate-700/50" style={{ backgroundColor: '#0d1230' }}>
             <StockAnalysis portfolioSymbols={portfolioSymbols} />
           </div>
         )}
 
-        {/* ML Predictor Tab */}
         {activeTab === 'ml' && (
-          <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+          <div className="rounded-xl p-6 border border-slate-700/50" style={{ backgroundColor: '#0d1230' }}>
             <MLPredictor />
           </div>
         )}
 
-        {/* Agents Tab */}
         {activeTab === 'agents' && (
-          <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+          <div className="rounded-xl p-6 border border-slate-700/50" style={{ backgroundColor: '#0d1230' }}>
             <AgentDashboard />
           </div>
         )}
       </main>
 
       {/* Footer */}
-      <footer className="bg-black/30 border-t border-white/10 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">🏛️</span>
-              <div>
-                <p className="text-sm font-medium bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                  Yiayia's Alpha
-                </p>
-                <p className="text-xs text-gray-500">Built with Areti (Excellence)</p>
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 text-center">
-              For educational purposes only. Not financial advice. Always do your own research.
-            </p>
-            <div className="flex items-center gap-4 text-gray-500 text-sm">
-              <span>🇬🇷</span>
-              <span>Made with wisdom</span>
-            </div>
-          </div>
+      <footer className="border-t border-slate-700/50 mt-auto" style={{ backgroundColor: '#0d1230' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <p className="text-xs text-slate-500 text-center">
+            For educational purposes only. Not financial advice.
+          </p>
         </div>
       </footer>
     </div>
