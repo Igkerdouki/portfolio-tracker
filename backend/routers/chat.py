@@ -26,11 +26,22 @@ class ChatResponse(BaseModel):
     data: Optional[Any] = None
 
 
+@router.get("/status")
+async def get_chat_status():
+    """Get AI agent status - which provider is active."""
+    return {
+        "is_intelligent": intelligent_agent.is_intelligent,
+        "provider": intelligent_agent.provider_name,
+        "provider_id": intelligent_agent.provider,
+        "message": "Groq (free) or Anthropic API key required for intelligent responses" if not intelligent_agent.is_intelligent else f"Using {intelligent_agent.provider_name}"
+    }
+
+
 @router.post("/message")
 async def send_message(msg: ChatMessage):
     """
     Send a message to the intelligent AI finance agent.
-    Uses Claude API for intelligent responses with real market data.
+    Uses Groq (free) or Anthropic API for intelligent responses with real market data.
     """
     try:
         response = await intelligent_agent.chat(msg.message)

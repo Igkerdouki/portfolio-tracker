@@ -1,6 +1,6 @@
 """
 Intelligent Finance Agent
-A sophisticated AI agent powered by Claude with memory, learning, and real data integration.
+A sophisticated AI agent powered by LLMs (Groq/Anthropic) with memory, learning, and real data integration.
 """
 
 import os
@@ -9,6 +9,14 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
+# Try Groq first (free tier available)
+try:
+    from groq import Groq
+    HAS_GROQ = True
+except ImportError:
+    HAS_GROQ = False
+
+# Anthropic as fallback
 try:
     import anthropic
     HAS_ANTHROPIC = True
@@ -144,18 +152,36 @@ class IntelligentFinanceAgent:
 You have access to real-time market data. Use it to make your answers specific and data-driven."""
 
     def __init__(self):
-        self.api_key = os.environ.get('ANTHROPIC_API_KEY', '')
-        self.client = None
+        self.groq_key = os.environ.get('GROQ_API_KEY', '')
+        self.anthropic_key = os.environ.get('ANTHROPIC_API_KEY', '')
+        self.groq_client = None
+        self.anthropic_client = None
         self.memory = AgentMemory()
         self.conversation_history = []
+        self.provider = None  # 'groq', 'anthropic', or None
 
-        if HAS_ANTHROPIC and self.api_key:
-            self.client = anthropic.Anthropic(api_key=self.api_key)
+        # Try Groq first (free tier)
+        if HAS_GROQ and self.groq_key:
+            self.groq_client = Groq(api_key=self.groq_key)
+            self.provider = 'groq'
+        # Fall back to Anthropic
+        elif HAS_ANTHROPIC and self.anthropic_key:
+            self.anthropic_client = anthropic.Anthropic(api_key=self.anthropic_key)
+            self.provider = 'anthropic'
 
     @property
     def is_intelligent(self) -> bool:
-        """Returns True if Claude API is available."""
-        return self.client is not None
+        """Returns True if an LLM API is available."""
+        return self.provider is not None
+
+    @property
+    def provider_name(self) -> str:
+        """Returns the name of the active provider."""
+        if self.provider == 'groq':
+            return 'Groq (Llama 3)'
+        elif self.provider == 'anthropic':
+            return 'Claude'
+        return 'Fallback Mode'
 
     def get_market_data(self, symbols: List[str]) -> str:
         """Fetch comprehensive market data for context."""
@@ -303,21 +329,39 @@ Provide a helpful, intelligent response. Use the real data above when relevant. 
         })
 
         # If no API key, provide intelligent fallback
-        if not self.client:
+        if not self.is_intelligent:
             response = self._intelligent_fallback(user_message, market_data)
             self.memory.add_conversation(user_message, response["message"])
             return response
 
         try:
-            # Call Claude API
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=2000,
-                system=self.SYSTEM_PROMPT,
-                messages=self.conversation_history[-15:]  # Keep context
-            )
+            agent_response = None
 
-            agent_response = response.content[0].text
+            if self.provider == 'groq':
+                # Call Groq API (Llama 3)
+                chat_messages = [{"role": "system", "content": self.SYSTEM_PROMPT}]
+                chat_messages.extend(self.conversation_history[-15:])
+
+                response = self.groq_client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=chat_messages,
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                agent_response = response.choices[0].message.content
+
+            elif self.provider == 'anthropic':
+                # Call Anthropic/Claude API
+                response = self.anthropic_client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=2000,
+                    system=self.SYSTEM_PROMPT,
+                    messages=self.conversation_history[-15:]
+                )
+                agent_response = response.content[0].text
+
+            if not agent_response:
+                raise Exception("No response from LLM")
 
             # Add to conversation history
             self.conversation_history.append({
@@ -333,7 +377,7 @@ Provide a helpful, intelligent response. Use the real data above when relevant. 
                 "message": agent_response,
                 "has_real_data": bool(market_data),
                 "symbols_analyzed": symbols,
-                "powered_by": "claude",
+                "powered_by": self.provider_name,
                 "timestamp": datetime.now().isoformat()
             }
 
