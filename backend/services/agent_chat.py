@@ -58,6 +58,10 @@ class AgentChat:
     def _route_message(self, message_lower: str, original: str) -> Dict:
         """Route message to appropriate handler."""
 
+        # Help - check first!
+        if any(word in message_lower for word in ['help', 'what can you do', 'commands', 'how to']):
+            return self._handle_help()
+
         # Stock recommendations
         if any(word in message_lower for word in ['recommend', 'suggest', 'best stocks', 'pick', 'what should i buy', 'good stocks']):
             return self._handle_recommendations(message_lower)
@@ -70,10 +74,11 @@ class AgentChat:
         if any(word in message_lower for word in ['long term', 'invest', 'hold', 'dividend', 'retirement', 'growth']):
             return self._handle_long_term()
 
-        # Specific stock analysis
-        symbols = self._extract_symbols(original)
-        if symbols:
-            return self._handle_stock_analysis(symbols[0])
+        # Specific stock analysis (only if explicitly asking about a stock)
+        if any(word in message_lower for word in ['analyze', 'analysis', 'tell me about', 'what about', 'how is', 'check']):
+            symbols = self._extract_symbols(original)
+            if symbols:
+                return self._handle_stock_analysis(symbols[0])
 
         # Market overview
         if any(word in message_lower for word in ['market', 'overview', 'how is the market', 'today']):
@@ -90,10 +95,6 @@ class AgentChat:
         # Compare stocks
         if 'compare' in message_lower or ' vs ' in message_lower or ' versus ' in message_lower:
             return self._handle_comparison(original)
-
-        # Help
-        if any(word in message_lower for word in ['help', 'what can you do', 'commands', 'how to']):
-            return self._handle_help()
 
         # Default: try to understand intent
         return self._handle_default(message_lower)

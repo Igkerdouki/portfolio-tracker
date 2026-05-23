@@ -1,11 +1,12 @@
 """
 Chat Router
-API endpoints for agent chat interface.
+API endpoints for Claude-powered investment chat interface.
 """
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from services.claude_chat import claude_advisor
 from services.agent_chat import agent_chat
 from services.stock_screener import stock_screener
 from services.enhanced_ml import EnhancedMLPredictor, run_enhanced_analysis
@@ -27,14 +28,19 @@ class ChatResponse(BaseModel):
 @router.post("/message")
 async def send_message(msg: ChatMessage):
     """
-    Send a message to the AI agent and get a response.
-    Natural language interface for stock analysis and recommendations.
+    Send a message to the Claude-powered investment advisor.
+    Provides friendly, educational, data-driven investment advice.
     """
     try:
-        response = agent_chat.process_message(msg.message)
+        response = await claude_advisor.chat(msg.message)
         return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Fallback to basic agent if Claude fails
+        try:
+            response = agent_chat.process_message(msg.message)
+            return response
+        except:
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/history")
